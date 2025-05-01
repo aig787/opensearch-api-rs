@@ -198,7 +198,7 @@ pub struct ShardsResponse {
 }
 
 /// Statistics about shards
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct ShardStatistics {
     /// Total number of shards
     pub total: u32,
@@ -215,7 +215,7 @@ pub struct ShardStatistics {
 }
 
 /// Information about a shard failure
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ShardFailure {
     /// Shard index
     pub shard: Option<i32>,
@@ -231,7 +231,7 @@ pub struct ShardFailure {
 }
 
 /// Reason for a shard failure
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ShardFailureReason {
     /// Type of error
     #[serde(rename = "type")]
@@ -243,4 +243,45 @@ pub struct ShardFailureReason {
     /// Additional error details
     #[serde(default)]
     pub caused_by: Option<HashMap<String, serde_json::Value>>,
+}
+
+/// Geo point representation
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GeoPoint {
+    /// Latitude
+    pub lat: f64,
+    /// Longitude
+    pub lon: f64,
+}
+
+impl GeoPoint {
+    pub fn new(lat: f64, lon: f64) -> Self {
+        Self {
+            lat,
+            lon,
+        }
+    }
+}
+
+/// Options for expanding wildcard expressions
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExpandWildcards {
+    Open,
+    Closed,
+    Hidden,
+    None,
+    All,
+}
+
+impl ToString for ExpandWildcards {
+    fn to_string(&self) -> String {
+        match self {
+            ExpandWildcards::Open => "open".to_string(),
+            ExpandWildcards::Closed => "closed".to_string(),
+            ExpandWildcards::Hidden => "hidden".to_string(),
+            ExpandWildcards::None => "none".to_string(),
+            ExpandWildcards::All => "all".to_string(),
+        }
+    }
 }

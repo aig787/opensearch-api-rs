@@ -1,15 +1,18 @@
-use opensearch_api::{Client};
+use opensearch_api::Client;
+use reqwest::StatusCode;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use reqwest::StatusCode;
 use testcontainers::core::wait::HttpWaitStrategy;
 use testcontainers::core::{ContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
-use testcontainers::{ContainerAsync, Image};
+use testcontainers::{ContainerAsync, Image, ImageExt, ReuseDirective};
+use uuid::Uuid;
 
-const OPENSEARCH_PORT: u16 = 9200;
-const DEFAULT_USERNAME: &str = "admin";
-const DEFAULT_PASSWORD: &str = "*!ST8IbKo5uFRs";
+
+/// Default OpenSearch port for tests
+pub const OPENSEARCH_PORT: u16 = 9200;
+pub const DEFAULT_USERNAME: &str = "admin";
+pub const DEFAULT_PASSWORD: &str = "*!ST8IbKo5uFRs";
 
 /// OpenSearch Docker image configuration
 #[derive(Debug, Clone)]
@@ -30,9 +33,9 @@ impl Default for OpenSearchImage {
                 ("OPENSEARCH_INITIAL_ADMIN_PASSWORD", DEFAULT_PASSWORD),
                 ("discovery.type", "single-node"),
             ]
-                .into_iter()
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .collect(),
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
         }
     }
 }
@@ -64,7 +67,7 @@ impl Image for OpenSearchImage {
 
     fn env_vars(
         &self,
-    ) -> impl IntoIterator<Item=(impl Into<Cow<'_, str>>, impl Into<Cow<'_, str>>)> {
+    ) -> impl IntoIterator<Item = (impl Into<Cow<'_, str>>, impl Into<Cow<'_, str>>)> {
         Box::new(self.env_vars.iter())
     }
 
@@ -74,6 +77,7 @@ impl Image for OpenSearchImage {
 }
 
 impl OpenSearchImage {
+    #[allow(dead_code)]
     pub fn with_password(mut self, password: &str) -> Self {
         self.password = password.to_owned();
         self.env_vars.insert(
@@ -92,7 +96,9 @@ impl OpenSearchImage {
 #[derive(Debug)]
 pub struct OpenSearchFixture {
     /// Docker container running OpenSearch
-    container: ContainerAsync<OpenSearchImage>,
+    _container: ContainerAsync<OpenSearchImage>,
+    // The id of this test instance
+    pub id: String,
     /// The OpenSearch client
     pub client: Client,
 }
@@ -100,8 +106,12 @@ pub struct OpenSearchFixture {
 impl OpenSearchFixture {
     /// Create a new OpenSearch test fixture
     pub async fn new() -> Result<Self, anyhow::Error> {
+        let id = Uuid::new_v4().to_string();
         // Configure the OpenSearch container
-        let container = OpenSearchImage::default().start().await?;
+        let container = OpenSearchImage::default()
+            .with_reuse(ReuseDirective::Always)
+            .start()
+            .await?;
 
         // Create a client connected to the container
         let host_port = container.get_host_port_ipv4(OPENSEARCH_PORT).await?;
@@ -116,7 +126,11 @@ impl OpenSearchFixture {
             .build()?;
 
         // Create the fixture
-        let fixture = Self { container, client };
+        let fixture = Self {
+            _container: container,
+            id,
+            client,
+        };
 
         Ok(fixture)
     }
@@ -125,8 +139,13 @@ impl OpenSearchFixture {
     pub async fn get_base_url(&self) -> anyhow::Result<String> {
         Ok(format!(
             "https://localhost:{}",
-            self.container.get_host_port_ipv4(OPENSEARCH_PORT).await?
+            self._container.get_host_port_ipv4(OPENSEARCH_PORT).await?
         ))
+    }
+
+    /// Creates a namespaced index name to ensure test isolation
+    pub fn namespaced_index(&self, index_name: &str) -> String {
+        format!("{}-{}", index_name, self.id)
     }
 }
 
@@ -142,11 +161,6 @@ mod tests {
         let ping_result = fixture.client.ping().await.expect("Failed to ping cluster");
         assert!(ping_result, "OpenSearch cluster should be pingable");
 
-        // Output the connection details for debugging
-        println!(
-            "Connected to OpenSearch at {}",
-            fixture.get_base_url().await?
-        );
         Ok(())
     }
 }

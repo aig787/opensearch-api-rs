@@ -10,9 +10,8 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Error> {
-//!     // Create client with builder pattern
-//!     use opensearch_api::{Client, Error};
-//! use opensearch_api::builder::MatchAllQuery;
+//! use opensearch_api::Client;
+//! use opensearch_api::types::query::MatchAllQuery;
 //! let client = Client::builder()
 //!         .base_url("https://localhost:9200")
 //!         .username("admin")
@@ -25,7 +24,7 @@
 //!     let response = client.search::<serde_json::Value>()
 //!         .from(0)
 //!         .size(10)
-//!         .query(MatchAllQuery::builder().build_query().unwrap())
+//!         .query(MatchAllQuery::builder().build().unwrap())
 //!         .build()
 //!         .unwrap()
 //!         .send()
@@ -36,35 +35,14 @@
 //!     Ok(())
 //! }
 //! ```
+#[cfg(feature = "client")]
+pub(crate) mod client;
+pub(crate) mod document;
+pub(crate) mod error;
+pub mod types;
 
 #[cfg(feature = "client")]
-mod client;
-mod error;
-mod types;
-
+pub use client::namespaces::*;
 #[cfg(feature = "client")]
-pub use client::namespaces::indices;
-#[cfg(feature = "client")]
-pub use client::namespaces::cluster;
-#[cfg(feature = "client")]
-pub use client::namespaces::documents;
-#[cfg(feature = "client")]
-pub use client::Client;
-#[cfg(feature = "client")]
-pub use client::ClientConfig;
+pub use client::*;
 pub use error::{Error, Result};
-pub use types::*;
-
-pub mod prelude {
-    //! Common types and traits for working with the OpenSearch API.
-    #[cfg(feature = "client")]
-    pub use crate::client::namespaces::indices;
-    #[cfg(feature = "client")]
-    pub use crate::client::namespaces::cluster;
-    #[cfg(feature = "client")]
-    pub use crate::client::namespaces::documents;
-    #[cfg(feature = "client")]
-    pub use crate::client::{Client, ClientConfig};
-    pub use crate::error::Error;
-    pub use crate::types::*;
-}

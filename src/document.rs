@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Document metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]

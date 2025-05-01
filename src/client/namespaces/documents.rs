@@ -1,13 +1,12 @@
 //! Documents namespace for OpenSearch
 
 use crate::error::Error;
+use derive_builder::Builder;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::json;
 
-// Document operations have been moved to the Client implementation
-// This file is kept for backward compatibility
-
+use crate::types::document::{DeleteOptions, ExistsOptions, GetOptions, IndexOptions, UpdateOptions, WaitForActiveShards};
 /// Re-export document types for easier access
 pub use crate::types::document::{
     BulkResponse, DeleteResponse, GetResponse, IndexResponse, UpdateResponse,
@@ -19,141 +18,1098 @@ pub struct DocumentsNamespace {
     client: crate::client::Client,
 }
 
+/// Builder for index document requests
+#[derive(Debug, Clone, Builder)]
+#[builder(pattern = "owned", setter(into, strip_option))]
+pub struct IndexRequest<'a, T: Serialize + ?Sized + Clone = serde_json::Value> {
+    /// Documents namespace reference
+    #[builder(pattern = "immutable")]
+    client: &'a DocumentsNamespace,
+
+    /// Index to store the document in
+    #[builder(pattern = "immutable")]
+    index: String,
+
+    /// Document to index
+    document: &'a T,
+
+    /// Document ID (optional, will be auto-generated if not provided)
+    #[builder(default)]
+    id: Option<String>,
+
+    /// Index options
+    #[builder(default)]
+    options: Option<IndexOptions>,
+}
+
+impl<'a, T: Clone + Serialize + ?Sized> IndexRequestBuilder<'a, T> {
+    /// Build and send the index request to the server
+    pub async fn send(self) -> Result<IndexResponse, Error> {
+        self.build().unwrap().send().await
+    }
+}
+
+impl<'a, T: Serialize + ?Sized + Clone> IndexRequest<'a, T> {
+    /// Create a new index request builder
+    pub(crate) fn new(
+        client: &'a DocumentsNamespace,
+        index: impl Into<String>,
+    ) -> IndexRequestBuilder<'a, T> {
+        IndexRequestBuilder::default()
+            .client(client)
+            .index(index.into())
+    }
+
+    /// Send the index request to the server
+    pub async fn send(self) -> Result<IndexResponse, Error> {
+        let index_str = self.index;
+        let mut method = Method::POST;
+        let mut path = format!("/{}", index_str);
+
+        if let Some(id) = self.id {
+            path.push_str(&format!("/_doc/{}", id));
+            // Use PUT when ID is provided
+            method = Method::PUT;
+        } else {
+            path.push_str("/_doc");
+        }
+
+        // Add query parameters from options
+        if let Some(options) = &self.options {
+            let mut query_params = Vec::new();
+
+            if let Some(refresh) = &options.refresh {
+                query_params.push(format!("refresh={}", refresh));
+            }
+
+            if let Some(routing) = &options.routing {
+                query_params.push(format!("routing={}", routing));
+            }
+
+            if let Some(timeout) = &options.timeout {
+                query_params.push(format!("timeout={}", timeout));
+            }
+
+            if let Some(version) = options.version {
+                query_params.push(format!("version={}", version));
+            }
+
+            if let Some(version_type) = &options.version_type {
+                query_params.push(format!("version_type={}", version_type));
+            }
+
+            if let Some(wait_for_active_shards) = &options.wait_for_active_shards {
+                let value = match wait_for_active_shards {
+                    WaitForActiveShards::Value(v) => v.to_string(),
+                    WaitForActiveShards::Count(n) => n.to_string(),
+                };
+                query_params.push(format!("wait_for_active_shards={}", value));
+            }
+
+            if !query_params.is_empty() {
+                path.push_str(&format!("?{}", query_params.join("&")));
+            }
+        }
+
+        self.client
+            .client
+            .request::<_, IndexResponse>(method, &path, Some(self.document))
+            .await
+    }
+}
+
+/// Builder for get document requests
+#[derive(Debug, Clone)]
+pub struct GetRequestBuilder<'a, T: for<'de> Deserialize<'de> + Send + Sync> {
+    /// Documents namespace reference
+    client: &'a DocumentsNamespace,
+    /// Index to get the document from
+    index: String,
+    /// Document ID
+    id: String,
+    /// Get options
+    options: Option<GetOptions>,
+    /// Type parameter marker
+    _marker: std::marker::PhantomData<T>,
+}
+
+impl<'a, T: for<'de> Deserialize<'de> + Send + Sync> GetRequestBuilder<'a, T> {
+    /// Create a new get request builder
+    pub(crate) fn new(
+        client: &'a DocumentsNamespace,
+        index: impl Into<String>,
+        id: impl Into<String>,
+    ) -> Self {
+        Self {
+            client,
+            index: index.into(),
+            id: id.into(),
+            options: None,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    /// Set the get options
+    pub fn options(mut self, options: GetOptions) -> Self {
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the source option
+    pub fn source(mut self, source: bool) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| GetOptions::builder().build().unwrap());
+        options.source = Some(source);
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the source_includes option
+    pub fn source_includes(mut self, source_includes: Vec<String>) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| GetOptions::builder().build().unwrap());
+        options.source_includes = Some(source_includes);
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the source_excludes option
+    pub fn source_excludes(mut self, source_excludes: Vec<String>) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| GetOptions::builder().build().unwrap());
+        options.source_excludes = Some(source_excludes);
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the routing option
+    pub fn routing(mut self, routing: impl Into<String>) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| GetOptions::builder().build().unwrap());
+        options.routing = Some(routing.into());
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the preference option
+    pub fn preference(mut self, preference: impl Into<String>) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| GetOptions::builder().build().unwrap());
+        options.preference = Some(preference.into());
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the realtime option
+    pub fn realtime(mut self, realtime: bool) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| GetOptions::builder().build().unwrap());
+        options.realtime = Some(realtime);
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the refresh option
+    pub fn refresh(mut self, refresh: bool) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| GetOptions::builder().build().unwrap());
+        options.refresh = Some(refresh);
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the version option
+    pub fn version(mut self, version: i64) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| GetOptions::builder().build().unwrap());
+        options.version = Some(version);
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the version_type option
+    pub fn version_type(mut self, version_type: impl Into<String>) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| GetOptions::builder().build().unwrap());
+        options.version_type = Some(version_type.into());
+        self.options = Some(options);
+        self
+    }
+
+    /// Send the get request to the server
+    pub async fn send(self) -> Result<Option<GetResponse<T>>, Error> {
+        let index_str = self.index;
+        let id_str = self.id;
+        let mut path = format!("/{index_str}/_doc/{id_str}");
+
+        // Add query parameters from options
+        let mut query_params = Vec::new();
+        if let Some(options) = &self.options {
+            if let Some(source) = options.source {
+                query_params.push(format!("_source={}", source));
+            }
+
+            if let Some(source_includes) = &options.source_includes {
+                let includes = source_includes.join(",");
+                query_params.push(format!("_source_includes={}", includes));
+            }
+
+            if let Some(source_excludes) = &options.source_excludes {
+                let excludes = source_excludes.join(",");
+                query_params.push(format!("_source_excludes={}", excludes));
+            }
+
+            if let Some(routing) = &options.routing {
+                query_params.push(format!("routing={}", routing));
+            }
+
+            if let Some(preference) = &options.preference {
+                query_params.push(format!("preference={}", preference));
+            }
+
+            if let Some(realtime) = options.realtime {
+                query_params.push(format!("realtime={}", realtime));
+            }
+
+            if let Some(refresh) = options.refresh {
+                query_params.push(format!("refresh={}", refresh));
+            }
+
+            if let Some(version) = options.version {
+                query_params.push(format!("version={}", version));
+            }
+
+            if let Some(version_type) = &options.version_type {
+                query_params.push(format!("version_type={}", version_type));
+            }
+        }
+
+        // Add query parameters to path
+        if !query_params.is_empty() {
+            path.push_str(&format!("?{}", query_params.join("&")));
+        }
+
+        log::debug!("Sending GET request to path: {}", path);
+
+        // Make a direct request to properly handle 404 responses
+        let url = self
+            .client
+            .client
+            .base_url
+            .join(&path)
+            .map_err(Error::UrlParseError)?;
+        let result = self.client.client.http_client.get(url).send().await;
+
+        match result {
+            Ok(response) => {
+                let status = response.status();
+                log::debug!("GET request returned status: {}", status);
+
+                // Return None for 404 responses
+                if status == reqwest::StatusCode::NOT_FOUND {
+                    log::debug!("Document not found (404), returning None");
+                    return Ok(None);
+                }
+
+                // Handle other error responses
+                if !status.is_success() {
+                    let error_text = response.text().await.unwrap_or_default();
+                    return Err(Error::ApiError {
+                        status_code: status.as_u16(),
+                        message: error_text,
+                        request_body_info: String::new(),
+                    });
+                }
+
+                // Parse successful response
+                let response_text = response.text().await.map_err(Error::HttpRequestError)?;
+                match serde_json::from_str::<GetResponse<T>>(&response_text) {
+                    Ok(get_response) => Ok(Some(get_response)),
+                    Err(err) => {
+                        log::error!("Failed to parse GET response: {}", err);
+                        Err(Error::DeserializationErrorWithResponse {
+                            error: err,
+                            response_text,
+                            path: "".to_string(),
+                            expected_type: std::any::type_name::<GetResponse<T>>().to_string(),
+                        })
+                    }
+                }
+            }
+            Err(err) => {
+                // Handle network errors and other request failures
+                if let Some(status) = err.status() {
+                    if status == reqwest::StatusCode::NOT_FOUND {
+                        log::debug!("Document not found (404), returning None");
+                        return Ok(None);
+                    }
+                }
+                log::error!("GET request failed: {}", err);
+                Err(Error::HttpRequestError(err))
+            }
+        }
+    }
+}
+
+/// Builder for update document requests
+#[derive(Debug, Clone)]
+pub struct UpdateRequestBuilder<'a, T: Serialize + ?Sized> {
+    /// Documents namespace reference
+    client: &'a DocumentsNamespace,
+    /// Index to update the document in
+    index: String,
+    /// Document ID
+    id: String,
+    /// Document to update with
+    document: &'a T,
+    /// Update options
+    options: Option<UpdateOptions>,
+}
+
+impl<'a, T: Serialize + ?Sized> UpdateRequestBuilder<'a, T> {
+    /// Create a new update request builder
+    pub(crate) fn new(
+        client: &'a DocumentsNamespace,
+        index: impl Into<String>,
+        id: impl Into<String>,
+        document: &'a T,
+    ) -> Self {
+        Self {
+            client,
+            index: index.into(),
+            id: id.into(),
+            document,
+            options: None,
+        }
+    }
+
+    /// Set the update options
+    pub fn options(mut self, options: UpdateOptions) -> Self {
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the doc_as_upsert option
+    pub fn doc_as_upsert(mut self, doc_as_upsert: bool) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| UpdateOptions::builder().build().unwrap());
+        options.doc_as_upsert = Some(doc_as_upsert);
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the retry_on_conflict option
+    pub fn retry_on_conflict(mut self, retry_on_conflict: u32) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| UpdateOptions::builder().build().unwrap());
+        options.retry_on_conflict = Some(retry_on_conflict);
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the refresh option
+    pub fn refresh(mut self, refresh: impl Into<String>) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| UpdateOptions::builder().build().unwrap());
+        options.refresh = Some(refresh.into());
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the routing option
+    pub fn routing(mut self, routing: impl Into<String>) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| UpdateOptions::builder().build().unwrap());
+        options.routing = Some(routing.into());
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the timeout option
+    pub fn timeout(mut self, timeout: impl Into<String>) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| UpdateOptions::builder().build().unwrap());
+        options.timeout = Some(timeout.into());
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the wait_for_active_shards option
+    pub fn wait_for_active_shards(mut self, wait_for_active_shards: WaitForActiveShards) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| UpdateOptions::builder().build().unwrap());
+        options.wait_for_active_shards = Some(wait_for_active_shards);
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the require_alias option
+    pub fn require_alias(mut self, require_alias: bool) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| UpdateOptions::builder().build().unwrap());
+        options.require_alias = Some(require_alias);
+        self.options = Some(options);
+        self
+    }
+
+    /// Send the update request to the server
+    pub async fn send(self) -> Result<UpdateResponse, Error> {
+        let index_str = self.index;
+        let id_str = self.id;
+        let mut path = format!("/{index_str}/_update/{id_str}");
+
+        // Build update document with proper structure
+        let mut update_doc = json!({
+            "doc": self.document
+        });
+
+        // Add options to update document
+        if let Some(options) = &self.options {
+            if let Some(doc_as_upsert) = options.doc_as_upsert {
+                update_doc["doc_as_upsert"] = json!(doc_as_upsert);
+            }
+        }
+
+        // Add query parameters from options
+        let mut query_params = Vec::new();
+        if let Some(options) = &self.options {
+            if let Some(retry_on_conflict) = options.retry_on_conflict {
+                query_params.push(format!("retry_on_conflict={}", retry_on_conflict));
+            }
+
+            if let Some(refresh) = &options.refresh {
+                query_params.push(format!("refresh={}", refresh));
+            }
+
+            if let Some(routing) = &options.routing {
+                query_params.push(format!("routing={}", routing));
+            }
+
+            if let Some(timeout) = &options.timeout {
+                query_params.push(format!("timeout={}", timeout));
+            }
+
+            if let Some(wait_for_active_shards) = &options.wait_for_active_shards {
+                let value = match wait_for_active_shards {
+                    WaitForActiveShards::Value(v) => v.to_string(),
+                    WaitForActiveShards::Count(n) => n.to_string(),
+                };
+                query_params.push(format!("wait_for_active_shards={}", value));
+            }
+
+            if let Some(require_alias) = options.require_alias {
+                query_params.push(format!("require_alias={}", require_alias));
+            }
+        }
+
+        // Add query parameters to path
+        if !query_params.is_empty() {
+            path.push_str(&format!("?{}", query_params.join("&")));
+        }
+
+        log::debug!("Sending UPDATE request to path: {}", path);
+        self.client
+            .client
+            .request::<_, UpdateResponse>(Method::POST, &path, Some(&update_doc))
+            .await
+    }
+}
+
+/// Builder for delete document requests
+#[derive(Debug, Clone)]
+pub struct DeleteRequestBuilder<'a> {
+    /// Documents namespace reference
+    client: &'a DocumentsNamespace,
+    /// Index to delete the document from
+    index: String,
+    /// Document ID
+    id: String,
+    /// Delete options
+    options: Option<DeleteOptions>,
+}
+
+impl<'a> DeleteRequestBuilder<'a> {
+    /// Create a new delete request builder
+    pub(crate) fn new(
+        client: &'a DocumentsNamespace,
+        index: impl Into<String>,
+        id: impl Into<String>,
+    ) -> Self {
+        Self {
+            client,
+            index: index.into(),
+            id: id.into(),
+            options: None,
+        }
+    }
+
+    /// Set the delete options
+    pub fn options(mut self, options: DeleteOptions) -> Self {
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the refresh option
+    pub fn refresh(mut self, refresh: impl Into<String>) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| DeleteOptions::builder().build().unwrap());
+        options.refresh = Some(refresh.into());
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the routing option
+    pub fn routing(mut self, routing: impl Into<String>) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| DeleteOptions::builder().build().unwrap());
+        options.routing = Some(routing.into());
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the timeout option
+    pub fn timeout(mut self, timeout: impl Into<String>) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| DeleteOptions::builder().build().unwrap());
+        options.timeout = Some(timeout.into());
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the version option
+    pub fn version(mut self, version: i64) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| DeleteOptions::builder().build().unwrap());
+        options.version = Some(version);
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the version_type option
+    pub fn version_type(mut self, version_type: impl Into<String>) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| DeleteOptions::builder().build().unwrap());
+        options.version_type = Some(version_type.into());
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the wait_for_active_shards option
+    pub fn wait_for_active_shards(mut self, wait_for_active_shards: WaitForActiveShards) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| DeleteOptions::builder().build().unwrap());
+        options.wait_for_active_shards = Some(wait_for_active_shards);
+        self.options = Some(options);
+        self
+    }
+
+    /// Send the delete request to the server
+    pub async fn send(self) -> Result<DeleteResponse, Error> {
+        let index_str = self.index;
+        let id_str = self.id;
+        let mut path = format!("/{index_str}/_doc/{id_str}");
+
+        // Add query parameters from options
+        let mut query_params = Vec::new();
+        if let Some(options) = &self.options {
+            if let Some(refresh) = &options.refresh {
+                query_params.push(format!("refresh={}", refresh));
+            }
+
+            if let Some(routing) = &options.routing {
+                query_params.push(format!("routing={}", routing));
+            }
+
+            if let Some(timeout) = &options.timeout {
+                query_params.push(format!("timeout={}", timeout));
+            }
+
+            if let Some(version) = options.version {
+                query_params.push(format!("version={}", version));
+            }
+
+            if let Some(version_type) = &options.version_type {
+                query_params.push(format!("version_type={}", version_type));
+            }
+
+            if let Some(wait_for_active_shards) = &options.wait_for_active_shards {
+                let value = match wait_for_active_shards {
+                    WaitForActiveShards::Value(v) => v.to_string(),
+                    WaitForActiveShards::Count(n) => n.to_string(),
+                };
+                query_params.push(format!("wait_for_active_shards={}", value));
+            }
+        }
+
+        // Add query parameters to path
+        if !query_params.is_empty() {
+            path.push_str(&format!("?{}", query_params.join("&")));
+        }
+
+        log::debug!("Sending DELETE request to path: {}", path);
+
+        // Make a direct request to handle 404 responses specially
+        let url = self
+            .client
+            .client
+            .base_url
+            .join(&path)
+            .map_err(Error::UrlParseError)?;
+        let result = self.client.client.http_client.delete(url).send().await;
+
+        match result {
+            Ok(response) => {
+                let status = response.status();
+                log::debug!("DELETE request returned status: {}", status);
+
+                // For both success and 404 status, try to parse the response
+                if status.is_success() || status == reqwest::StatusCode::NOT_FOUND {
+                    let response_text = response.text().await.map_err(Error::HttpRequestError)?;
+
+                    // Try to parse the response
+                    match serde_json::from_str::<DeleteResponse>(&response_text) {
+                        Ok(delete_response) => Ok(delete_response),
+                        Err(err) => {
+                            log::error!("Failed to parse DELETE response: {}", err);
+                            Err(Error::DeserializationErrorWithResponse {
+                                error: err,
+                                response_text,
+                                path: "".to_string(),
+                                expected_type: std::any::type_name::<DeleteResponse>().to_string(),
+                            })
+                        }
+                    }
+                } else {
+                    // Handle other error responses
+                    let error_text = response.text().await.unwrap_or_default();
+                    Err(Error::ApiError {
+                        status_code: status.as_u16(),
+                        message: error_text,
+                        request_body_info: String::new(),
+                    })
+                }
+            }
+            Err(err) => {
+                log::error!("DELETE request failed: {}", err);
+                Err(Error::HttpRequestError(err))
+            }
+        }
+    }
+}
+
+/// Builder for exists document requests
+#[derive(Debug, Clone)]
+pub struct ExistsRequestBuilder<'a> {
+    /// Documents namespace reference
+    client: &'a DocumentsNamespace,
+    /// Index to check for the document in
+    index: String,
+    /// Document ID
+    id: String,
+    /// Exists options
+    options: Option<ExistsOptions>,
+}
+
+impl<'a> ExistsRequestBuilder<'a> {
+    /// Create a new exists request builder
+    pub(crate) fn new(
+        client: &'a DocumentsNamespace,
+        index: impl Into<String>,
+        id: impl Into<String>,
+    ) -> Self {
+        Self {
+            client,
+            index: index.into(),
+            id: id.into(),
+            options: None,
+        }
+    }
+
+    /// Set the exists options
+    pub fn options(mut self, options: ExistsOptions) -> Self {
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the routing option
+    pub fn routing(mut self, routing: impl Into<String>) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| ExistsOptions::builder().build().unwrap());
+        options.routing = Some(routing.into());
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the preference option
+    pub fn preference(mut self, preference: impl Into<String>) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| ExistsOptions::builder().build().unwrap());
+        options.preference = Some(preference.into());
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the realtime option
+    pub fn realtime(mut self, realtime: bool) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| ExistsOptions::builder().build().unwrap());
+        options.realtime = Some(realtime);
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the refresh option
+    pub fn refresh(mut self, refresh: bool) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| ExistsOptions::builder().build().unwrap());
+        options.refresh = Some(refresh);
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the version option
+    pub fn version(mut self, version: i64) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| ExistsOptions::builder().build().unwrap());
+        options.version = Some(version);
+        self.options = Some(options);
+        self
+    }
+
+    /// Set the version_type option
+    pub fn version_type(mut self, version_type: impl Into<String>) -> Self {
+        let mut options = self
+            .options
+            .unwrap_or_else(|| ExistsOptions::builder().build().unwrap());
+        options.version_type = Some(version_type.into());
+        self.options = Some(options);
+        self
+    }
+
+    /// Send the exists request to the server
+    pub async fn send(self) -> Result<bool, Error> {
+        let index_str = self.index;
+        let id_str = self.id;
+        let mut path = format!("/{index_str}/_doc/{id_str}");
+
+        // Add query parameters from options
+        let mut query_params = Vec::new();
+        if let Some(options) = &self.options {
+            if let Some(routing) = &options.routing {
+                query_params.push(format!("routing={}", routing));
+            }
+
+            if let Some(preference) = &options.preference {
+                query_params.push(format!("preference={}", preference));
+            }
+
+            if let Some(realtime) = options.realtime {
+                query_params.push(format!("realtime={}", realtime));
+            }
+
+            if let Some(refresh) = options.refresh {
+                query_params.push(format!("refresh={}", refresh));
+            }
+
+            if let Some(version) = options.version {
+                query_params.push(format!("version={}", version));
+            }
+
+            if let Some(version_type) = &options.version_type {
+                query_params.push(format!("version_type={}", version_type));
+            }
+        }
+
+        // Add query parameters to path
+        if !query_params.is_empty() {
+            path.push_str(&format!("?{}", query_params.join("&")));
+        }
+
+        log::debug!("Checking document existence at path: {}", path);
+
+        // Use the URL builder from the client
+        let url = self
+            .client
+            .client
+            .base_url
+            .join(&path)
+            .map_err(Error::UrlParseError)?;
+
+        // Make a HEAD request to check existence
+        let result = self.client.client.http_client.head(url).send().await;
+
+        match result {
+            Ok(response) => {
+                let status = response.status();
+                log::debug!("Exists request returned status: {}", status);
+                Ok(status.is_success())
+            }
+            Err(err) => {
+                // HTTP 404 indicates document doesn't exist, not an error
+                if let Some(status) = err.status() {
+                    if status == reqwest::StatusCode::NOT_FOUND {
+                        log::debug!("Document not found (404), returning false");
+                        return Ok(false);
+                    }
+                    log::warn!("Exists request failed with status: {}", status);
+                } else {
+                    log::error!("Exists request failed: {}", err);
+                }
+                Err(Error::HttpRequestError(err))
+            }
+        }
+    }
+}
+
+/// Builder for refresh requests
+#[derive(Debug, Clone)]
+pub struct RefreshRequestBuilder<'a> {
+    /// Documents namespace reference
+    client: &'a DocumentsNamespace,
+    /// Index to refresh
+    index: String,
+}
+
+impl<'a> RefreshRequestBuilder<'a> {
+    /// Create a new refresh request builder
+    pub(crate) fn new(client: &'a DocumentsNamespace, index: impl Into<String>) -> Self {
+        Self {
+            client,
+            index: index.into(),
+        }
+    }
+
+    /// Send the refresh request to the server
+    pub async fn send(self) -> Result<serde_json::Value, Error> {
+        let index_str = self.index;
+        let path = format!("{}/_refresh", index_str);
+        self.client
+            .client
+            .request::<(), serde_json::Value>(Method::POST, &path, None)
+            .await
+    }
+}
+
 impl DocumentsNamespace {
     /// Create a new documents namespace with the given client
     pub(crate) fn new(client: crate::client::Client) -> Self {
         Self { client }
     }
 
-    /// Index a document with the given ID
-    pub async fn index<T>(
-        &self,
-        index: impl Into<String>,
-        id: Option<impl Into<String>>,
-        document: &T,
-    ) -> Result<Value, Error>
+    /// # Fluent Builder API
+    ///
+    /// The DocumentsNamespace provides a fluent builder pattern API for document operations:
+    ///
+    /// The builder pattern enables a readable and chainable API for complex operations
+    /// and is the recommended approach for all document operations.
+    ///
+    /// Example of the fluent builder pattern:
+    ///
+    /// ```no_run
+    /// # use opensearch_api::{Client, Error};
+    /// # use serde_json::json;
+    /// # async fn example() -> Result<(), Error> {
+    /// # let client = Client::builder().base_url("http://localhost:9200").build()?;
+    /// // Using the fluent builder API:
+    /// let response = client.documents()
+    ///     .index("my_index")
+    ///     .document(&json!({"field": "value"}))
+    ///     .id("doc1")
+    ///     .send()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+
+    /// Create a builder for indexing a document
+    ///
+    /// This allows for a fluent API to set options and execute the index operation.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use opensearch_api::{Client, Error};
+    /// # use serde_json::json;
+    /// # async fn example() -> Result<(), Error> {
+    /// # let client = Client::builder().base_url("http://localhost:9200").build()?;
+    /// let response = client.documents()
+    ///     .index("my_index")
+    ///     .document(&json!({"field": "value"}))
+    ///     .id("doc1")
+    ///     .send()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn index<T>(&self, index: impl Into<String>) -> IndexRequestBuilder<T>
     where
-        T: Serialize + ?Sized,
+        T: Serialize + ?Sized + Clone,
     {
-        let index_name = index.into();
-
-        let (method, path) = if let Some(id) = id {
-            // Index with specific ID
-            let doc_id = id.into();
-            (Method::PUT, format!("/{}/doc/{}", index_name, doc_id))
-        } else {
-            // Auto-generate ID
-            (Method::POST, format!("/{}/doc", index_name))
-        };
-
-        self.client
-            .request::<T, Value>(method, &path, Some(document))
-            .await
+        IndexRequest::new(self, index)
     }
 
-    /// Get a document by ID
-    pub async fn get<T>(
-        &self,
+    /// Create a builder for getting a document
+    ///
+    /// This allows for a fluent API to set options and execute the get operation.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use opensearch_api::{Client, Error};
+    /// # use serde_json::Value;
+    /// # async fn example() -> Result<(), Error> {
+    /// # let client = Client::builder().base_url("http://localhost:9200").build()?;
+    /// let response = client.documents()
+    ///     .get::<Value>("my_index", "doc1")
+    ///     .source(true)
+    ///     .routing("user1")
+    ///     .send()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn get<'a, T>(
+        &'a self,
         index: impl Into<String>,
         id: impl Into<String>,
-    ) -> Result<Option<T>, Error>
+    ) -> GetRequestBuilder<'a, T>
     where
         T: for<'de> Deserialize<'de> + Send + Sync,
     {
-        let index_str = index.into();
-        let id_str = id.into();
-        let path = format!("{}/doc/{}", index_str, id_str);
-
-        let url = self
-            .client
-            .base_url
-            .join(&path)
-            .map_err(Error::UrlParseError)?;
-
-        let response = self
-            .client
-            .http_client
-            .get(url)
-            .send()
-            .await
-            .map_err(Error::HttpRequestError)?;
-
-        // If document not found, return None
-        if response.status() == reqwest::StatusCode::NOT_FOUND {
-            return Ok(None);
-        }
-
-        // Check for other errors
-        let status = response.status();
-        if !status.is_success() {
-            let error_body = response.text().await.unwrap_or_default();
-            return Err(Error::ApiError {
-                status_code: status.as_u16(),
-                message: error_body,
-            });
-        }
-
-        // Parse response
-        let get_response = response
-            .json::<crate::types::document::GetResponse<T>>()
-            .await
-            .map_err(|e| Error::DeserializationError(e))?;
-
-        Ok(get_response.source)
+        GetRequestBuilder::new(self, index, id)
     }
 
-    /// Update a document by ID
-    pub async fn update<T>(
-        &self,
+    /// Create a builder for updating a document
+    ///
+    /// This allows for a fluent API to set options and execute the update operation.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use opensearch_api::{Client, Error};
+    /// # use serde_json::json;
+    /// # async fn example() -> Result<(), Error> {
+    /// # let client = Client::builder().base_url("http://localhost:9200").build()?;
+    /// let response = client.documents()
+    ///     .update("my_index", "doc1", &json!({"field": "new value"}))
+    ///     .doc_as_upsert(true)
+    ///     .retry_on_conflict(3)
+    ///     .send()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn update<'a, T>(
+        &'a self,
         index: impl Into<String>,
         id: impl Into<String>,
-        document: &T,
-    ) -> Result<Value, Error>
+        document: &'a T,
+    ) -> UpdateRequestBuilder<'a, T>
     where
         T: Serialize + ?Sized,
     {
-        let index_name = index.into();
-        let doc_id = id.into();
-        let path = format!("/{}/doc/{}", index_name, doc_id);
-
-        // Wrap document in update syntax
-        let update_doc = json!({
-            "doc": document,
-            "doc_as_upsert": true
-        });
-
-        self.client
-            .request::<Value, Value>(
-                Method::POST,
-                &format!("{}/_update", path),
-                Some(&update_doc),
-            )
-            .await
+        UpdateRequestBuilder::new(self, index, id, document)
     }
 
-    /// Delete a document by ID
-    pub async fn delete(
-        &self,
+    /// Create a builder for deleting a document
+    ///
+    /// This allows for a fluent API to set options and execute the delete operation.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use opensearch_api::{Client, Error};
+    /// # async fn example() -> Result<(), Error> {
+    /// # let client = Client::builder().base_url("http://localhost:9200").build()?;
+    /// let response = client.documents()
+    ///     .delete("my_index", "doc1")
+    ///     .refresh("true")
+    ///     .send()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn delete<'a>(
+        &'a self,
         index: impl Into<String>,
         id: impl Into<String>,
-    ) -> Result<Value, Error> {
-        let index_name = index.into();
-        let doc_id = id.into();
-        let path = format!("/{}/doc/{}", index_name, doc_id);
-
-        self.client
-            .request::<(), Value>(Method::DELETE, &path, None)
-            .await
+    ) -> DeleteRequestBuilder<'a> {
+        DeleteRequestBuilder::new(self, index, id)
     }
 
-    /// Refresh one or more indices
-    pub async fn refresh(&self, index: impl Into<String>) -> Result<Value, Error> {
-        let index_name = index.into();
-        let path = format!("/{}/_refresh", index_name);
+    /// Create a builder for checking if a document exists
+    ///
+    /// This allows for a fluent API to set options and execute the exists operation.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use opensearch_api::{Client, Error};
+    /// # async fn example() -> Result<(), Error> {
+    /// # let client = Client::builder().base_url("http://localhost:9200").build()?;
+    /// let exists = client.documents()
+    ///     .exists("my_index", "doc1")
+    ///     .routing("user1")
+    ///     .realtime(true)
+    ///     .send()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn exists<'a>(
+        &'a self,
+        index: impl Into<String>,
+        id: impl Into<String>,
+    ) -> ExistsRequestBuilder<'a> {
+        ExistsRequestBuilder::new(self, index, id)
+    }
 
-        self.client
-            .request::<(), Value>(Method::POST, &path, None)
-            .await
+    /// Create a builder for refreshing an index
+    ///
+    /// This allows for a fluent API to execute the refresh operation.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use opensearch_api::{Client, Error};
+    /// # async fn example() -> Result<(), Error> {
+    /// # let client = Client::builder().base_url("http://localhost:9200").build()?;
+    /// let response = client.documents()
+    ///     .refresh("my_index")
+    ///     .send()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn refresh<'a>(&'a self, index: impl Into<String>) -> RefreshRequestBuilder<'a> {
+        RefreshRequestBuilder::new(self, index)
     }
 }
 

@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
-use crate::script::Script;
-use crate::SortOrder;
+use crate::types::common::GeoPoint;
+use crate::types::script::Script;
+use crate::types::search::SortOrder;
 
 /// Bucket script aggregation
 #[serde_with::skip_serializing_none]
@@ -277,16 +278,6 @@ pub struct PercentileValue {
     pub value_as_string: Option<String>,
 }
 
-/// Geo point representation
-#[serde_with::skip_serializing_none]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct GeoPoint {
-    /// Latitude
-    pub lat: f64,
-
-    /// Longitude
-    pub lon: f64,
-}
 
 /// Bucket in a bucket aggregation
 #[serde_with::skip_serializing_none]

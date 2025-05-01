@@ -1,5 +1,5 @@
-use opensearch_api::builder::MatchQuery;
-use opensearch_api::indices::{CreateIndexRequest, IndexSettings};
+use opensearch_api::indices::IndexSettings;
+use opensearch_api::types::query::{MatchQuery, MatchQueryRule};
 use opensearch_api::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -30,8 +30,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create an index
     let index_name = "products";
 
-    if !client.indices().exists(index_name).await? {
-        let create_index_request = CreateIndexRequest::builder()
+    if !client.indices().exists(index_name).build()?.send().await? {
+        client
+            .indices()
+            .create(index_name)
             .settings(
                 IndexSettings::builder()
                     .number_of_shards(1)
@@ -47,11 +49,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "category": { "type": "keyword" }
                 }
             }))
-            .build()?;
-
-        client
-            .indices()
-            .create(index_name, create_index_request)
+            .build()?
+            .send()
             .await?;
         println!("Created index '{}'", index_name);
     }
@@ -67,15 +66,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     client
         .documents()
-        .index(index_name, Some(product.id.clone()), &product)
+        .index(index_name)
+        .document(&product)
+        .id(&product.id)
+        .build()?
+        .send()
         .await?;
     println!("Indexed product: {}", product.name);
 
     // Get the document
-    let retrieved: Option<Product> = client.documents().get(index_name, &product.id).await?;
+    let retrieved = client
+        .documents()
+        .get::<Product>(index_name, &product.id)
+        .send()
+        .await?;
 
-    if let Some(doc) = retrieved {
-        println!("Retrieved product: {} - ${}", doc.name, doc.price);
+    if let Some(response) = retrieved {
+        println!("Retrieved product: {} - ${}", response.source_ref_required().name, response.source_ref_required().price);
     }
 
     // Search for documents
@@ -86,9 +93,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .size(10)
         .query(
             MatchQuery::builder()
-                .field("category".to_string())
-                .query("Electronics".to_string())
-                .build_query()?,
+                .field("category", MatchQueryRule::simple("Electronics"))
+                .build()?
+                .into_query(),
         )
         .build()?
         .send()

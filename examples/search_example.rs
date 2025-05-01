@@ -1,5 +1,7 @@
-use opensearch_api::builder::{BoolQuery, MatchQuery, RangeQuery, TermQuery};
-use opensearch_api::indices::{CreateIndexRequest, IndexSettings};
+use opensearch_api::indices::IndexSettings;
+use opensearch_api::types::query::{
+    BoolQuery, MatchQuery, MatchQueryRule, RangeQuery, RangeQueryRule, TermQuery, TermQueryRule,
+};
 use opensearch_api::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -27,14 +29,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let index_name = "my-test-index";
 
     // Check if index already exists and delete it if it does
-    if client.indices().exists(index_name).await? {
+    if client.indices().exists(index_name).build()?.send().await? {
         println!("Index '{}' already exists, deleting...", index_name);
-        let response = client.indices().delete(index_name).await?;
-        println!("Delete response: {}", response);
+        let response = client.indices().delete(index_name).build()?.send().await?;
+        println!(
+            "Delete response: {}",
+            serde_json::to_string_pretty(&response)?
+        );
     }
 
     // Create a new index with mappings
-    let create_request = CreateIndexRequest::builder()
+    println!("Creating index '{}'...", index_name);
+    let response = client
+        .indices()
+        .create(index_name)
         .settings(
             IndexSettings::builder()
                 .number_of_shards(2)
@@ -52,11 +60,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 "in_stock": { "type": "boolean" }
             }
         }))
-        .build()?;
-
-    println!("Creating index '{}'...", index_name);
-    let response = client.indices().create(index_name, create_request).await?;
-    println!("Create response: {}", response);
+        .build()?
+        .send()
+        .await?;
+    println!(
+        "Create response: {}",
+        serde_json::to_string_pretty(&response)?
+    );
 
     // Index some documents
     println!("Indexing documents...");
@@ -107,14 +117,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
     for product in &products {
         let _response = client
             .documents()
-            .index(index_name, Some(&product.id), product)
+            .index(index_name)
+            .document(&product)
+            .id(&product.id)
+            .build()?
+            .send()
             .await?;
         println!("Indexed product {}: {}", product.id, product.name);
     }
 
     // Refresh the index to make documents available for search
     println!("Refreshing index...");
-    client.documents().refresh(index_name).await?;
+    client.documents().refresh(index_name).send().await?;
 
     // Perform a match query - find products with "keyboard" in the name
     println!("\nPerforming match query for 'keyboard' in name field:");
@@ -126,9 +140,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .size(10)
         .query(
             MatchQuery::builder()
-                .field("name".to_string())
-                .query("keyboard".to_string())
-                .build_query()?,
+                .field("name", MatchQueryRule::simple("keyboard"))
+                .build()?
+                .into_query(),
         )
         .build()?
         .send()
@@ -151,9 +165,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .size(10)
         .query(
             TermQuery::builder()
-                .field("category".to_string())
-                .value("Computer".into())
-                .build_query()?,
+                .field("category", TermQueryRule::value("Computer"))
+                .build()?
+                .into_query(),
         )
         .build()?
         .send()
@@ -163,15 +177,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Perform a bool query - find in-stock products with price < 100
     println!("\nPerforming bool query for in-stock products with price < 100:");
-    let query = BoolQuery::new()
+    let query = BoolQuery::builder()
         .must(vec![
             TermQuery::builder()
-                .field("in_stock".to_string())
-                .value(true.into())
-                .build_query()?,
-            RangeQuery::field("price").lt(100.into()).build_query()?,
+                .field("in_stock", TermQueryRule::value(true))
+                .build()?
+                .into_query(),
+            RangeQuery::builder()
+                .field("price", RangeQueryRule::builder().lt(100).build()?)
+                .build()?
+                .into_query(),
         ])
-        .build_query()?;
+        .build()?
+        .into_query();
     let search_response = client
         .search::<Product>()
         .index(index_name)
