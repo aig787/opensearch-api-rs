@@ -448,12 +448,14 @@ impl MatchAllQuery {
     pub fn builder() -> MatchAllQueryBuilder {
         MatchAllQueryBuilder::default()
     }
+}
 
+impl MatchAllQueryBuilder {
     /// Build the final match all query object
     pub fn build_query(&self) -> Result<Query, String> {
-        let query = self.clone();
-
-        let match_all_query = query::MatchAllQuery { boost: query.boost };
+        let match_all_query = query::MatchAllQuery {
+            boost: self.boost.unwrap_or_default(),
+        };
 
         Ok(Query::MatchAll(match_all_query))
     }

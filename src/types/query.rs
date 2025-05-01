@@ -14,14 +14,10 @@ use serde_literals::lit_str;
 /// # Examples
 ///
 /// ```
-/// use std::collections::HashMap;
-/// use opensearch_api::{MatchQuery, Query};
+/// use opensearch_api::builder::MatchQuery;
 ///
-/// let mut field_map = HashMap::new();
-/// field_map.insert("title".to_string(), "document title".to_string().into());
 ///
-/// let match_query = MatchQuery { field: field_map };
-/// let query = Query::Match(match_query);
+/// let query = MatchQuery::builder().field("test".to_string()).query("value".to_string()).build_query().unwrap();
 /// ```
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

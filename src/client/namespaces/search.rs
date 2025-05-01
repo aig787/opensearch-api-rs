@@ -1,12 +1,12 @@
 //! Search namespace for OpenSearch
 
 use crate::error::Error;
-use crate::types::search::{SearchResponse};
+use crate::types::search::SearchResponse;
 use crate::{Client, Query};
 use derive_builder::Builder;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
-use serde_json::{json};
+use serde_json::json;
 
 /// Builder for creating and executing search queries
 #[derive(Debug, Clone, Builder)]
@@ -69,7 +69,7 @@ where
 
 impl Client {
     /// Create a search query builder
-    pub fn search<T>(self) -> SearchQueryBuilder<T>
+    pub fn search<T>(&self) -> SearchQueryBuilder<T>
     where
         T: Default + Clone + for<'de> Deserialize<'de> + Send + Sync + 'static,
     {

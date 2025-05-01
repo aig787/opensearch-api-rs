@@ -120,13 +120,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("\nPerforming match query for 'keyboard' in name field:");
 
     let search_response = client
-        .search()
-        .query::<Product>()
+        .search::<Product>()
         .index(index_name)
         .from(0)
         .size(10)
         .query(
-            MatchQuery::field("name")
+            MatchQuery::builder()
+                .field("name".to_string())
                 .query("keyboard".to_string())
                 .build_query()?,
         )
@@ -145,14 +145,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Perform a term query - find products in specific category
     println!("\nPerforming term query for 'Computer Accessories' category:");
     let search_response = client
-        .search()
-        .query::<Product>()
+        .search::<Product>()
         .index(index_name)
         .from(0)
         .size(10)
         .query(
-            TermQuery::field("category")
-                .field("Computer".to_string())
+            TermQuery::builder()
+                .field("category".to_string())
+                .value("Computer".into())
                 .build_query()?,
         )
         .build()?
@@ -165,15 +165,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("\nPerforming bool query for in-stock products with price < 100:");
     let query = BoolQuery::new()
         .must(vec![
-            TermQuery::field("in_stock")
+            TermQuery::builder()
+                .field("in_stock".to_string())
                 .value(true.into())
                 .build_query()?,
             RangeQuery::field("price").lt(100.into()).build_query()?,
         ])
         .build_query()?;
     let search_response = client
-        .search()
-        .query::<Product>()
+        .search::<Product>()
         .index(index_name)
         .from(0)
         .size(10)

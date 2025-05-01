@@ -5,33 +5,32 @@
 //!
 //! ## Examples
 //!
-//! ```rust
-//! use opensearch_api_rs::{client::{Client, ClientConfig}, prelude::*};
+//! ```rust,no_run
+//! use opensearch_api::Error;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Error> {
 //!     // Create client with builder pattern
-//!     let client = Client::builder()
+//!     use opensearch_api::{Client, Error};
+//! use opensearch_api::builder::MatchAllQuery;
+//! let client = Client::builder()
 //!         .base_url("https://localhost:9200")
 //!         .username("admin")
 //!         .password("admin")
 //!         .timeout_secs(30)
 //!         .verify_ssl(true)
-//!         .build()?
-//!         .into_client()?;
-//!
-//!     // Search using builder pattern
-//!     let search_request = client.search_typed::<serde_json::Value>("my-index")
-//!         .query(serde_json::json!({
-//!             "match": {
-//!                 "field": "value"
-//!             }
-//!         }))
-//!         .from(0)
-//!         .size(10)
 //!         .build()?;
 //!
-//!     let response = client.search(search_request).await?;
+//!     // Search using builder pattern
+//!     let response = client.search::<serde_json::Value>()
+//!         .from(0)
+//!         .size(10)
+//!         .query(MatchAllQuery::builder().build_query().unwrap())
+//!         .build()
+//!         .unwrap()
+//!         .send()
+//!         .await?;
+//!
 //!     println!("Found {} hits", response.hits.total.value);
 //!
 //!     Ok(())

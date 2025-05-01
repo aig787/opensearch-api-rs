@@ -85,7 +85,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .from(0)
         .size(10)
         .query(
-            MatchQuery::field("category")
+            MatchQuery::builder()
+                .field("category".to_string())
                 .query("Electronics".to_string())
                 .build_query()?,
         )
