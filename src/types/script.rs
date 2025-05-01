@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Script definition in OpenSearch
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum Script {
     /// Inline script definition
@@ -14,7 +14,7 @@ pub enum Script {
 }
 
 /// Inline script definition
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InlineScript {
     /// Script source code
     pub source: String,
@@ -33,12 +33,12 @@ pub struct InlineScript {
 }
 
 /// Stored script reference
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StoredScript {
     /// ID of the stored script
     pub id: String,
 
     /// Script parameters
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub params: Option<HashMap<String, serde_json::Value>>,
 }

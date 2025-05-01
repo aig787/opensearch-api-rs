@@ -1195,6 +1195,8 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "serde_literals",
+ "serde_with",
  "serde_yaml",
  "testcontainers",
  "thiserror 2.0.12",
@@ -1764,6 +1766,15 @@ dependencies = [
  "itoa",
  "memchr",
  "ryu",
+ "serde",
+]
+
+[[package]]
+name = "serde_literals"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a566f939d49d6c0bdcaba6f214b10a02accc0144c8d5ba10ea4e933b4ad78c3f"
+dependencies = [
  "serde",
 ]
 

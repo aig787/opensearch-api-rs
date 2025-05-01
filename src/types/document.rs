@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Document metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DocumentMetadata {
     /// Index where the document is stored
     #[serde(rename = "_index")]
@@ -29,7 +30,7 @@ pub struct DocumentMetadata {
 
 
 /// Wait For Active Shards options
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum WaitForActiveShards {
     /// Number of active shards
@@ -40,7 +41,8 @@ pub enum WaitForActiveShards {
 
 
 /// Response for a document indexing operation
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct IndexResponse {
     /// Index where the document was indexed
     #[serde(rename = "_index")]
@@ -70,7 +72,8 @@ pub struct IndexResponse {
 }
 
 /// Response for a document get operation
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct GetResponse<T = serde_json::Value> {
     /// Index where the document is stored
     #[serde(rename = "_index")]
@@ -105,7 +108,8 @@ pub struct GetResponse<T = serde_json::Value> {
 }
 
 /// Response for a document delete operation
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DeleteResponse {
     /// Index where the document was deleted
     #[serde(rename = "_index")]
@@ -135,7 +139,8 @@ pub struct DeleteResponse {
 }
 
 /// Response for a bulk operation
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BulkResponse {
     /// Time taken to execute the bulk operation in milliseconds
     pub took: i64,
@@ -151,7 +156,8 @@ pub struct BulkResponse {
 }
 
 /// Individual item in a bulk operation response
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BulkResponseItem {
     /// Index operation response
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -171,7 +177,8 @@ pub struct BulkResponseItem {
 }
 
 /// Response for a document update operation
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct UpdateResponse {
     /// Index where the document was updated
     #[serde(rename = "_index")]

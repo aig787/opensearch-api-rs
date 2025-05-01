@@ -4,6 +4,7 @@ use crate::script::Script;
 use crate::SortOrder;
 
 /// Bucket script aggregation
+#[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BucketScriptAggregation {
     /// Paths to the buckets
@@ -22,6 +23,7 @@ pub struct BucketScriptAggregation {
 }
 
 /// Bucket selector aggregation
+#[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BucketSelectorAggregation {
     /// Paths to the buckets
@@ -36,6 +38,7 @@ pub struct BucketSelectorAggregation {
 }
 
 /// Bucket sort aggregation
+#[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BucketSortAggregation {
     /// Sort criteria
@@ -56,6 +59,7 @@ pub struct BucketSortAggregation {
 }
 
 /// Serial differencing aggregation
+#[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerialDifferencingAggregation {
     /// Path to the buckets
@@ -75,6 +79,7 @@ pub struct SerialDifferencingAggregation {
 }
 
 /// Matrix stats aggregation
+#[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MatrixStatsAggregation {
     /// Fields to analyze
@@ -90,6 +95,7 @@ pub struct MatrixStatsAggregation {
 }
 
 /// Aggregation results for different aggregation types
+#[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum AggregationResult {
@@ -238,6 +244,7 @@ pub enum AggregationResult {
 }
 
 /// Standard deviation bounds
+#[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StdDeviationBounds {
     /// Upper bound
@@ -256,6 +263,7 @@ pub struct StdDeviationBounds {
 }
 
 /// Percentile value
+#[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PercentileValue {
     /// Percentile key
@@ -270,7 +278,8 @@ pub struct PercentileValue {
 }
 
 /// Geo point representation
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct GeoPoint {
     /// Latitude
     pub lat: f64,
@@ -280,32 +289,29 @@ pub struct GeoPoint {
 }
 
 /// Bucket in a bucket aggregation
+#[serde_with::skip_serializing_none]
+#[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bucket {
     /// Bucket key
     pub key: serde_json::Value,
 
     /// Key as string (for date histograms)
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub key_as_string: Option<String>,
 
     /// Document count in this bucket
     pub doc_count: u64,
 
     /// From value for range buckets
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub from: Option<serde_json::Value>,
 
     /// From value as string (for date ranges)
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub from_as_string: Option<String>,
 
     /// To value for range buckets
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub to: Option<serde_json::Value>,
 
     /// To value as string (for date ranges)
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub to_as_string: Option<String>,
 
     /// Sub-aggregations

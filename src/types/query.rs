@@ -4,6 +4,7 @@ use crate::script::Script;
 use crate::GeoPoint;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use serde_literals::lit_str;
 
 /// Represents query types in OpenSearch Query DSL
 ///
@@ -22,13 +23,10 @@ use std::collections::HashMap;
 /// let match_query = MatchQuery { field: field_map };
 /// let query = Query::Match(match_query);
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum Query {
-    /// Match all query to match all documents
-    MatchAll(MatchAllQuery),
-    /// Match none query to match no documents
-    MatchNone(MatchNoneQuery),
     /// Match query for full-text search
     Match(MatchQuery),
     /// Term query for exact matching
@@ -45,6 +43,10 @@ pub enum Query {
     Wildcard(WildcardQuery),
     /// Prefix query for prefix matching
     Prefix(PrefixQuery),
+    /// Match all query to match all documents
+    MatchAll(MatchAllQuery),
+    /// Match none query to match no documents
+    MatchNone(MatchNoneQuery),
     /// Generic query structure for other query types
     Generic(HashMap<String, serde_json::Value>),
 }
@@ -74,7 +76,7 @@ impl Query {
             MatchQueryParams::Simple(value.to_string()),
         );
 
-        Self::Match(MatchQuery { field: field_map })
+        Self::Match(MatchQuery { match_: field_map })
     }
 
     /// Helper method to create a term query
@@ -82,7 +84,7 @@ impl Query {
         let mut field_map = HashMap::new();
         field_map.insert(field.to_string(), TermQueryParams::Simple(value));
 
-        Self::Term(TermQuery { field: field_map })
+        Self::Term(TermQuery { term: field_map })
     }
 
     /// Helper method to create a bool query
@@ -94,7 +96,7 @@ impl Query {
 // BoolQueryBuilder implementation moved to builder.rs
 
 /// Match all query to match all documents
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MatchAllQuery {
     /// Optional boost value
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -102,19 +104,19 @@ pub struct MatchAllQuery {
 }
 
 /// Match none query to match no documents
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MatchNoneQuery {}
 
 /// Match query for full-text search
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MatchQuery {
     /// Field to query
-    #[serde(flatten)]
-    pub field: HashMap<String, MatchQueryParams>,
+    #[serde(rename = "match")]
+    pub match_: HashMap<String, MatchQueryParams>,
 }
 
 /// Parameters for match query
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum MatchQueryParams {
     /// Simple query with just a value
@@ -151,15 +153,15 @@ pub enum MatchQueryParams {
 }
 
 /// Term query for exact matching
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TermQuery {
     /// Field to query
-    #[serde(flatten)]
-    pub field: HashMap<String, TermQueryParams>,
+    #[serde(rename = "term")]
+    pub term: HashMap<String, TermQueryParams>,
 }
 
 /// Parameters for term query
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum TermQueryParams {
     /// Simple query with just a value
@@ -178,7 +180,7 @@ pub enum TermQueryParams {
 }
 
 /// Range query for range comparisons
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RangeQuery {
     /// Field to query
     #[serde(flatten)]
@@ -186,7 +188,7 @@ pub struct RangeQuery {
 }
 
 /// Parameters for range query
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RangeQueryParams {
     /// Greater than
     #[serde(rename = "gt", skip_serializing_if = "Option::is_none")]
@@ -227,7 +229,7 @@ pub enum RangeRelation {
 }
 
 /// Boolean query for combining queries
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BoolQuery {
     /// Queries that must match (AND)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -253,7 +255,7 @@ pub struct BoolQuery {
 }
 
 /// Exists query to check if a field exists
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExistsQuery {
     /// Field to check
     pub field: String,
@@ -263,7 +265,7 @@ pub struct ExistsQuery {
 }
 
 /// Query string query with advanced query syntax
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct QueryStringQuery {
     /// Query string
     pub query: String,
@@ -372,7 +374,7 @@ pub enum QueryStringType {
 }
 
 /// Wildcard query for pattern matching
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WildcardQuery {
     /// Field to query
     #[serde(flatten)]
@@ -380,7 +382,7 @@ pub struct WildcardQuery {
 }
 
 /// Parameters for wildcard query
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum WildcardQueryParams {
     /// Simple query with just the pattern
@@ -402,7 +404,7 @@ pub enum WildcardQueryParams {
 }
 
 /// Prefix query for prefix matching
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PrefixQuery {
     /// Field to query
     #[serde(flatten)]
@@ -410,7 +412,7 @@ pub struct PrefixQuery {
 }
 
 /// Parameters for prefix query
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum PrefixQueryParams {
     /// Simple query with just the prefix
@@ -431,18 +433,21 @@ pub enum PrefixQueryParams {
     },
 }
 
+lit_str!(LitAuto, "auto");
+
 /// Fuzziness parameter
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum Fuzziness {
     /// Auto fuzziness
-    Auto(String),
+    #[serde(with = "LitAuto")]
+    Auto,
     /// Specific edit distance
     Distance(i32),
 }
 
 /// Minimum should match specification
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum MinimumShouldMatch {
     /// Integer value (absolute number)
@@ -452,7 +457,7 @@ pub enum MinimumShouldMatch {
 }
 
 /// Geo bounding box query
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct GeoBoundingBoxQuery {
     /// Top left corner of the bounding box
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -527,7 +532,7 @@ pub struct GeoShapeQuery {
 }
 
 /// Geo shape representation
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum GeoShape {
     /// Reference to an indexed shape
@@ -547,7 +552,7 @@ pub enum GeoShape {
 }
 
 /// GeoJSON shape types
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum GeoJsonShape {
     /// Point (single coordinate)
@@ -610,7 +615,7 @@ pub enum GeoJsonShape {
 }
 
 /// Script query
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ScriptQuery {
     /// Script to execute
     pub script: Script,
@@ -685,7 +690,7 @@ pub struct MoreLikeThisQuery {
 }
 
 /// Input for more like this query
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum Like {
     /// Plain text
@@ -718,7 +723,7 @@ pub enum Like {
 }
 
 /// Percolate query to match stored queries
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PercolateQuery {
     /// Field containing the query
     pub field: String,

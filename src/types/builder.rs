@@ -7,13 +7,11 @@ use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Builder for creating a match query
-#[derive(Debug, Clone, Builder, Serialize, Deserialize)]
+/// Match query parameters
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Builder, Serialize, Deserialize, PartialEq)]
 #[builder(setter(strip_option))]
-pub struct MatchQuery {
-    /// Field to search
-    field: String,
-
+pub struct Match {
     /// Value to match
     query: String,
 
@@ -42,65 +40,162 @@ pub struct MatchQuery {
     analyzer: Option<String>,
 }
 
-impl MatchQuery {
-    /// Create a new match query builder for the given field
-    pub fn field(field: impl Into<String>) -> MatchQueryBuilder {
-        let mut builder = MatchQueryBuilder::default();
-        builder.field(field.into());
-        builder
+/// Builder for creating a match query
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MatchQuery {
+    /// Field to match mappings
+    #[serde(rename = "match")]
+    pub match_: HashMap<String, Match>,
+}
+
+impl Match {
+    /// Create a new match query builder
+    pub fn new() -> MatchBuilder {
+        MatchBuilder::default()
+    }
+
+    /// Create a new match builder
+    pub fn builder() -> MatchBuilder {
+        MatchBuilder::default()
     }
 }
 
-impl MatchQueryBuilder {
+impl MatchQuery {
+    pub fn builder() -> MatchQueryRulesBuilder {
+        MatchQueryRulesBuilder::default()
+    }
+}
+
+/// Builder for creating a match query
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Builder, Serialize, Deserialize, PartialEq)]
+#[builder(setter(strip_option))]
+pub struct MatchQueryRules {
+    /// Field to search
+    field: String,
+
+    /// Value to match
+    #[builder(default)]
+    query: Option<String>,
+
+    /// Operator to use for matching multiple terms
+    #[builder(default)]
+    operator: Option<Operator>,
+
+    /// Fuzziness parameter
+    #[builder(default)]
+    fuzziness: Option<Fuzziness>,
+
+    /// Prefix length for fuzzy queries
+    #[builder(default)]
+    prefix_length: Option<u32>,
+
+    /// Maximum query expansion for fuzzy queries
+    #[builder(default)]
+    max_expansions: Option<u32>,
+
+    /// Boost value for this query
+    #[builder(default)]
+    boost: Option<f64>,
+
+    /// Analyzer to use
+    #[builder(default)]
+    analyzer: Option<String>,
+}
+
+impl MatchQueryRules {
+    /// Create a new match query rules builder
+    pub fn builder() -> MatchQueryRulesBuilder {
+        MatchQueryRulesBuilder::default()
+    }
+}
+
+impl MatchQueryRulesBuilder {
     /// Build the final match query object
     pub fn build_query(&self) -> Result<Query, String> {
-        let query_builder = self.clone();
-        let query = query_builder
+        let builder = self.clone();
+        let query = builder
             .build()
             .map_err(|e| format!("Failed to build match query: {}", e))?;
+
+        // Build the match parameters
+        let mut match_params_builder = MatchBuilder::default();
+
+        if let Some(query_value) = query.query {
+            match_params_builder.query(query_value);
+        } else {
+            return Err("Query is required for match query".to_string());
+        }
+
+        if let Some(op) = query.operator {
+            match_params_builder.operator(op);
+        }
+
+        if let Some(fuzz) = query.fuzziness {
+            match_params_builder.fuzziness(fuzz);
+        }
+
+        if let Some(pl) = query.prefix_length {
+            match_params_builder.prefix_length(pl);
+        }
+
+        if let Some(me) = query.max_expansions {
+            match_params_builder.max_expansions(me);
+        }
+
+        if let Some(b) = query.boost {
+            match_params_builder.boost(b);
+        }
+
+        if let Some(a) = query.analyzer {
+            match_params_builder.analyzer(a);
+        }
+
+        let match_params = match_params_builder
+            .build()
+            .map_err(|e| format!("Failed to build match parameters: {}", e))?;
 
         let mut field_map = HashMap::new();
 
         // Create the appropriate MatchQueryParams based on complexity
-        let params = if query.operator.is_none()
-            && query.fuzziness.is_none()
-            && query.prefix_length.is_none()
-            && query.max_expansions.is_none()
-            && query.boost.is_none()
-            && query.analyzer.is_none()
+        let params = if match_params.operator.is_none()
+            && match_params.fuzziness.is_none()
+            && match_params.prefix_length.is_none()
+            && match_params.max_expansions.is_none()
+            && match_params.boost.is_none()
+            && match_params.analyzer.is_none()
         {
             // Simple case - just the query text
-            query::MatchQueryParams::Simple(query.query)
+            query::MatchQueryParams::Simple(match_params.query)
         } else {
             // Advanced case - include all the optional parameters
             query::MatchQueryParams::Advanced {
-                query: query.query,
-                operator: query.operator,
-                analyzer: query.analyzer,
+                query: match_params.query,
+                operator: match_params.operator,
+                analyzer: match_params.analyzer,
                 minimum_should_match: None, // Not in the builder but in the params
-                fuzziness: query.fuzziness,
-                prefix_length: query.prefix_length,
-                max_expansions: query.max_expansions,
-                boost: query.boost,
+                fuzziness: match_params.fuzziness,
+                prefix_length: match_params.prefix_length,
+                max_expansions: match_params.max_expansions,
+                boost: match_params.boost,
             }
         };
 
         // Insert into the field map
         field_map.insert(query.field, params);
 
-        let match_query = query::MatchQuery { field: field_map };
+        let match_query = query::MatchQuery { match_: field_map };
 
         Ok(Query::Match(match_query))
     }
 }
 
-/// Builder for creating a term query
-#[derive(Debug, Clone, Builder, Serialize, Deserialize)]
+/// Term query parameters
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Builder, Serialize, Deserialize, PartialEq)]
 #[builder(setter(strip_option))]
-pub struct TermQuery {
-    /// Field to search
-    field: String,
-
+pub struct Term {
     /// Value to match exactly
     value: serde_json::Value,
 
@@ -113,44 +208,118 @@ pub struct TermQuery {
     case_insensitive: Option<bool>,
 }
 
-impl TermQuery {
-    /// Create a new term query builder for the given field
-    pub fn field(field: impl Into<String>) -> TermQueryBuilder {
-        let mut builder = TermQueryBuilder::default();
-        builder.field(field.into());
-        builder
+/// Builder for creating a term query
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TermQuery {
+    /// Field to term mappings
+    #[serde(rename = "term")]
+    pub term: HashMap<String, Term>,
+}
+
+impl Term {
+    /// Create a new term builder
+    pub fn builder() -> TermBuilder {
+        TermBuilder::default()
+    }
+
+    /// Create a new term parameters instance
+    pub fn new() -> TermBuilder {
+        TermBuilder::default()
     }
 }
 
-impl TermQueryBuilder {
+impl TermQuery {
+    /// Create a new term query builder
+    pub fn builder() -> TermQueryRulesBuilder {
+        TermQueryRulesBuilder::default()
+    }
+}
+
+/// Builder for creating a term query
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Builder, Serialize, Deserialize, PartialEq)]
+#[builder(setter(strip_option))]
+pub struct TermQueryRules {
+    /// Field to search
+    field: String,
+
+    /// Value to match exactly
+    #[builder(default)]
+    value: Option<serde_json::Value>,
+
+    /// Boost value for this query
+    #[builder(default)]
+    boost: Option<f64>,
+
+    /// Case insensitive setting
+    #[builder(default)]
+    case_insensitive: Option<bool>,
+}
+
+impl TermQueryRules {
+    /// Create a new term query rules builder
+    pub fn builder() -> TermQueryRulesBuilder {
+        TermQueryRulesBuilder::default()
+    }
+}
+
+impl TermQueryRulesBuilder {
     /// Build the final term query object
     pub fn build_query(&self) -> Result<Query, String> {
-        let query_builder = self.clone();
-        let query = query_builder
+        let builder = self.clone();
+        let query = builder
             .build()
             .map_err(|e| format!("Failed to build term query: {}", e))?;
 
-        let mut field_map = std::collections::HashMap::new();
-        let term_params = if query.boost.is_some() || query.case_insensitive.is_some() {
-            TermQueryParams::Advanced {
-                value: query.value,
-                boost: query.boost,
-                case_insensitive: query.case_insensitive,
-            }
+        // Build the term parameters
+        let mut term_params_builder = TermBuilder::default();
+
+        if let Some(value) = query.value {
+            term_params_builder.value(value);
         } else {
-            TermQueryParams::Simple(query.value)
+            return Err("Value is required for term query".to_string());
+        }
+
+        if let Some(b) = query.boost {
+            term_params_builder.boost(b);
+        }
+
+        if let Some(ci) = query.case_insensitive {
+            term_params_builder.case_insensitive(ci);
+        }
+
+        let term_params = term_params_builder
+            .build()
+            .map_err(|e| format!("Failed to build term parameters: {}", e))?;
+
+        let mut field_map = HashMap::new();
+
+        // Create the appropriate TermQueryParams based on complexity
+        let params = if term_params.boost.is_none() && term_params.case_insensitive.is_none() {
+            // Simple case - just the value
+            query::TermQueryParams::Simple(term_params.value)
+        } else {
+            // Advanced case - include all the optional parameters
+            query::TermQueryParams::Advanced {
+                value: term_params.value,
+                boost: term_params.boost,
+                case_insensitive: term_params.case_insensitive,
+            }
         };
 
-        field_map.insert(query.field, term_params);
+        // Insert into the field map
+        field_map.insert(query.field, params);
 
-        let term_query = query::TermQuery { field: field_map };
+        let term_query = query::TermQuery { term: field_map };
 
         Ok(Query::Term(term_query))
     }
 }
 
 /// Builder for creating a range query
-#[derive(Debug, Clone, Builder, Serialize, Deserialize)]
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Builder, Serialize, Deserialize, PartialEq)]
 #[builder(setter(strip_option))]
 pub struct RangeQuery {
     /// Field to search
@@ -196,6 +365,11 @@ impl RangeQuery {
         builder.field(field.into());
         builder
     }
+
+    /// Create a new range query builder
+    pub fn builder() -> RangeQueryBuilder {
+        RangeQueryBuilder::default()
+    }
 }
 
 impl RangeQueryBuilder {
@@ -231,7 +405,8 @@ impl RangeQueryBuilder {
 }
 
 /// Builder for creating a bool query
-#[derive(Debug, Clone, Builder, Serialize, Deserialize)]
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Builder, Serialize, Deserialize, PartialEq)]
 #[builder(setter(strip_option))]
 pub struct BoolQuery {
     /// Must clauses - results must match these queries
@@ -260,7 +435,8 @@ pub struct BoolQuery {
 }
 
 /// Builder for creating a match all query
-#[derive(Debug, Clone, Builder, Serialize, Deserialize)]
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Builder, Serialize, Deserialize, PartialEq)]
 #[builder(setter(strip_option))]
 pub struct MatchAllQuery {
     /// Boost value for this query
@@ -269,6 +445,10 @@ pub struct MatchAllQuery {
 }
 
 impl MatchAllQuery {
+    pub fn builder() -> MatchAllQueryBuilder {
+        MatchAllQueryBuilder::default()
+    }
+
     /// Build the final match all query object
     pub fn build_query(&self) -> Result<Query, String> {
         let query = self.clone();
@@ -280,10 +460,16 @@ impl MatchAllQuery {
 }
 
 /// Builder for creating a match none query
-#[derive(Debug, Clone, Builder, Serialize, Deserialize)]
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Builder, Serialize, Deserialize, PartialEq)]
 pub struct MatchNoneQuery {}
 
 impl MatchNoneQuery {
+    /// Create a new match none query builder
+    pub fn builder() -> MatchNoneQueryBuilder {
+        MatchNoneQueryBuilder::default()
+    }
+
     /// Build the final match none query object
     pub fn build_query(&self) -> Result<Query, String> {
         let match_none_query = query::MatchNoneQuery {};
@@ -294,6 +480,11 @@ impl MatchNoneQuery {
 impl BoolQuery {
     /// Create a new bool query builder
     pub fn new() -> BoolQueryBuilder {
+        BoolQueryBuilder::default()
+    }
+
+    /// Create a new bool query builder
+    pub fn builder() -> BoolQueryBuilder {
         BoolQueryBuilder::default()
     }
 }
@@ -371,7 +562,8 @@ impl BoolQueryBuilder {
 }
 
 /// Builder for creating a query string query
-#[derive(Debug, Clone, Builder, Serialize, Deserialize)]
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Builder, Serialize, Deserialize, PartialEq)]
 #[builder(setter(strip_option))]
 pub struct QueryStringQuery {
     /// Query string
@@ -379,102 +571,82 @@ pub struct QueryStringQuery {
 
     /// Default field to search if not specified in the query
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub default_field: Option<String>,
 
     /// List of fields to search
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub fields: Option<Vec<String>>,
 
     /// Default operator (AND/OR)
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub default_operator: Option<Operator>,
 
     /// Analyzer to use
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub analyzer: Option<String>,
 
     /// Whether to analyze wildcard terms
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub analyze_wildcard: Option<bool>,
 
     /// Whether to lowercase expanded terms
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub lowercase_expanded_terms: Option<bool>,
 
     /// Whether to enable position increments in result
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_position_increments: Option<bool>,
 
     /// Fuzzy max expansions
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub fuzzy_max_expansions: Option<i32>,
 
     /// Fuzziness parameter
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub fuzziness: Option<Fuzziness>,
 
     /// Fuzzy prefix length
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub fuzzy_prefix_length: Option<i32>,
 
     /// Fuzzy rewrite method
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub fuzzy_rewrite: Option<String>,
 
     /// Phrase slop
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub phrase_slop: Option<i32>,
 
     /// Boost value
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub boost: Option<f64>,
 
     /// Whether to enable auto generate phrase queries
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_generate_phrase_queries: Option<bool>,
 
     /// Allow leading wildcard flag
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub allow_leading_wildcard: Option<bool>,
 
     /// Maximum number of terms that can be created by wildcard or prefix expansion
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_determinized_states: Option<i32>,
 
     /// Minimum should match parameter
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub minimum_should_match: Option<MinimumShouldMatch>,
 
     /// Lenient flag to ignore format based failures
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub lenient: Option<bool>,
 
     /// Time zone for date values
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub time_zone: Option<String>,
 
     /// How scores from different queries are combined
     #[builder(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub type_: Option<QueryStringType>,
 }
 
@@ -484,6 +656,11 @@ impl QueryStringQuery {
         let mut builder = QueryStringQueryBuilder::default();
         builder.query(query.into());
         builder
+    }
+
+    /// Create a new query string query builder
+    pub fn builder() -> QueryStringQueryBuilder {
+        QueryStringQueryBuilder::default()
     }
 }
 
@@ -530,13 +707,17 @@ pub struct QueryDsl;
 
 impl QueryDsl {
     /// Create a match query builder
-    pub fn match_query(field: impl Into<String>) -> MatchQueryBuilder {
-        MatchQuery::field(field)
+    pub fn match_query(field: impl Into<String>) -> MatchQueryRulesBuilder {
+        let mut builder = MatchQueryRulesBuilder::default();
+        builder.field(field.into());
+        builder
     }
 
     /// Create a term query builder
-    pub fn term(field: impl Into<String>) -> TermQueryBuilder {
-        TermQuery::field(field)
+    pub fn term(field: impl Into<String>) -> TermQueryRulesBuilder {
+        let mut builder = TermQueryRulesBuilder::default();
+        builder.field(field.into());
+        builder
     }
 
     /// Create a range query builder
