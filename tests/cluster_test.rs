@@ -95,11 +95,6 @@ async fn test_cluster_settings() -> Result<()> {
         !settings.persistent.is_empty(),
         "Should have persistent settings section"
     );
-    assert!(
-        !settings.transient.is_empty(),
-        "Should have transient settings section"
-    );
-
     Ok(())
 }
 

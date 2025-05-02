@@ -72,7 +72,7 @@ pub enum Error {
     /// Builder error
     #[error("Builder error: {0}")]
     BuilderError(String),
-    
+
     /// Error parsing HTTP header
     #[error("Failed to parse HTTP header: {0}")]
     HeaderParseError(String),
@@ -89,9 +89,13 @@ pub enum Error {
     #[error("Query DSL error: {0}")]
     QueryDSL(String),
 
-    /// Search error 
+    /// Search error
     #[error("Search error: {0}")]
     Search(String),
+
+    /// Invalid argument provided to a function
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
 }
 
 /// Result type for OpenSearch API operations
@@ -122,7 +126,7 @@ impl Error {
     /// Create a new deserialization error with the raw response text and path information
     #[cfg(feature = "client")]
     pub fn deserialization_with_response(
-        error: serde_json::Error, 
+        error: serde_json::Error,
         response_text: String,
         path: impl Into<String>,
         expected_type: impl Into<String>,
@@ -133,5 +137,11 @@ impl Error {
             path: path.into(),
             expected_type: expected_type.into(),
         }
+    }
+}
+
+impl From<derive_builder::UninitializedFieldError> for Error {
+    fn from(error: derive_builder::UninitializedFieldError) -> Self {
+        Error::BuilderError(error.to_string())
     }
 }

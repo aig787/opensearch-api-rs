@@ -1002,7 +1002,7 @@ pub struct ClusterSettingsResponse {
 /// Request for the cluster put settings API
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(pattern = "mutable", setter(into, strip_option), build_fn(error = "crate::Error"))]
 pub struct ClusterSettingsRequest {
     /// Persistent settings
     #[builder(default)]
@@ -1021,7 +1021,7 @@ impl ClusterSettingsRequest {
 
 /// Builder for the cluster allocation explain API
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(pattern = "mutable", setter(into, strip_option), build_fn(error = "crate::Error"))]
 pub struct AllocationExplainRequest {
     /// Index name
     #[builder(default)]

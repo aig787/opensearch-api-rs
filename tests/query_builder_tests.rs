@@ -11,7 +11,7 @@ fn test_match_query_builder_simple() -> Result<(), Error> {
         )
         .build()?;
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "match": {
             "title": "search text"
@@ -45,7 +45,7 @@ fn test_match_query_builder_complete() -> Result<(), Error> {
         )
         .build()?;
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "match": {
             "title": {
@@ -76,7 +76,7 @@ fn test_term_query_builder_simple() -> Result<(), Error> {
         .field("status".to_string(), TermQueryRule::value(json!("active")))
         .build()?;
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "term": {
             "status": {
@@ -98,7 +98,7 @@ fn test_terms_query_builder_simple() -> Result<(), Error> {
         )
         .build()?;
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "terms": {
             "status": ["active", "pending"]
@@ -121,7 +121,7 @@ fn test_terms_query_builder_with_boost() -> Result<(), Error> {
         )
         .build()?;
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "terms": {
             "status": {
@@ -148,7 +148,7 @@ fn test_range_query_builder() -> Result<(), Error> {
         )
         .build()?;
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "range": {
             "age": {
@@ -178,7 +178,7 @@ fn test_range_query_builder_date() -> Result<(), Error> {
         )
         .build()?;
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "range": {
             "created_at": {
@@ -212,13 +212,13 @@ fn test_bool_query_builder() -> Result<(), Error> {
         .build()?;
 
     let query = BoolQuery::builder()
-        .must(vec![term_query.into_query()])
-        .filter(vec![range_query.into_query()])
+        .must(vec![term_query.into()])
+        .filter(vec![range_query.into()])
         .minimum_should_match(MinimumShouldMatch::Absolute(1))
         .boost(1.5)
         .build()?;
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "bool": {
             "must": [
@@ -259,7 +259,7 @@ fn test_exists_query_builder() -> Result<(), Error> {
     assert_eq!(query.exists.field, "email");
     assert_eq!(query.exists.boost, Some(1.2));
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "exists": {
             "field": "email",
@@ -304,7 +304,7 @@ fn test_query_string_query_builder() -> Result<(), Error> {
     assert_eq!(query.query_string.boost, Some(1.5));
     assert_eq!(query.query_string.type_, Some(QueryStringType::BestFields));
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "query_string": {
             "query": "title:elasticsearch or description:search",
@@ -336,7 +336,7 @@ fn test_wildcard_query_builder() -> Result<(), Error> {
         )
         .build()?;
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "wildcard": {
             "name": {
@@ -365,7 +365,7 @@ fn test_prefix_query_builder() -> Result<(), Error> {
         )
         .build()?;
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "prefix": {
             "name": {
@@ -382,12 +382,62 @@ fn test_prefix_query_builder() -> Result<(), Error> {
 }
 
 #[test]
+fn test_match_bool_prefix_query_builder_simple() -> Result<(), Error> {
+    let query = MatchBoolPrefixQuery::builder()
+        .field(
+            "title".to_string(),
+            MatchBoolPrefixQueryRule::Simple("quick brown f".to_string()),
+        )
+        .build()?;
+
+    let json = Query::from(query).json()?;
+    let expected = json!({
+        "match_bool_prefix": {
+            "title": "quick brown f"
+        }
+    });
+
+    assert_eq!(json, expected);
+    Ok(())
+}
+
+#[test]
+fn test_match_bool_prefix_query_builder_advanced() -> Result<(), Error> {
+    let query = MatchBoolPrefixQuery::builder()
+        .field(
+            "title".to_string(),
+            MatchBoolPrefixQueryRule::advanced()
+                .query("quick brown f".to_string())
+                .boost(1.5)
+                .operator("AND".to_string())
+                .minimum_should_match("75%".to_string())
+                .build()?,
+        )
+        .build()?;
+
+    let json = Query::from(query).json()?;
+    let expected = json!({
+        "match_bool_prefix": {
+            "title": {
+                "query": "quick brown f",
+                "boost": 1.5,
+                "operator": "AND",
+                "minimum_should_match": "75%"
+            }
+        }
+    });
+
+    assert_eq!(json, expected);
+    Ok(())
+}
+
+#[test]
 fn test_match_all_query_builder() -> Result<(), Error> {
     let query = MatchAllQuery::builder().boost(1.5).build()?;
 
     assert_eq!(query.match_all.boost, Some(1.5));
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "match_all": {
             "boost": 1.5
@@ -398,7 +448,7 @@ fn test_match_all_query_builder() -> Result<(), Error> {
 
     // Test default case without boost
     let query_default = MatchAllQuery::builder().build()?;
-    let json_default = query_default.into_query().json()?;
+    let json_default = Query::from(query_default).json()?;
     let expected_default = json!({
         "match_all": {}
     });
@@ -411,7 +461,7 @@ fn test_match_all_query_builder() -> Result<(), Error> {
 #[test]
 fn test_match_none_query_builder() -> Result<(), Error> {
     let query = MatchNoneQuery::simple();
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected_default = json!({
         "match_none": {}
     });
@@ -423,9 +473,10 @@ fn test_match_none_query_builder() -> Result<(), Error> {
 
 #[test]
 fn test_match_phrase_query_builder() -> Result<(), Error> {
-    let query = MatchPhraseQuery::builder()
+    let query = Query::match_phrase()
+        .field("title", "quick brown fox")
         .field(
-            "title".to_string(),
+            "content",
             MatchPhraseQueryRule::advanced()
                 .query("quick brown fox".to_string())
                 .analyzer("standard".to_string())
@@ -435,10 +486,11 @@ fn test_match_phrase_query_builder() -> Result<(), Error> {
         )
         .build()?;
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "match_phrase": {
-            "title": {
+            "title": "quick brown fox",
+            "content": {
                 "query": "quick brown fox",
                 "analyzer": "standard",
                 "slop": 2,
@@ -466,7 +518,7 @@ fn test_match_phrase_prefix_query_builder() -> Result<(), Error> {
         )
         .build()?;
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "match_phrase_prefix": {
             "title": {
@@ -502,7 +554,7 @@ fn test_multi_match_query_builder() -> Result<(), Error> {
         .boost(1.5)
         .build()?;
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "multi_match": {
             "query": "search text",
@@ -562,7 +614,7 @@ fn test_ids_query_builder() -> Result<(), Error> {
     );
     assert_eq!(query.ids.boost, Some(1.5));
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "ids": {
             "values": ["1", "2", "3"],
@@ -591,7 +643,7 @@ fn test_fuzzy_query_builder() -> Result<(), Error> {
         )
         .build()?;
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "fuzzy": {
             "name": {
@@ -603,6 +655,39 @@ fn test_fuzzy_query_builder() -> Result<(), Error> {
                 "rewrite": "constant_score",
                 "boost": 1.5
             }
+        }
+    });
+
+    assert_eq!(json, expected);
+    Ok(())
+}
+
+#[test]
+fn test_nested_query_builder() -> Result<(), Error> {
+    let match_query = MatchQuery::builder()
+        .field("reviews.rating", MatchQueryRule::Simple("5".to_string()))
+        .build()?;
+
+    let nested_query = NestedQuery::builder()
+        .path("reviews")
+        .query(Box::new(Query::from(match_query)))
+        .score_mode(NestedScoreMode::Avg)
+        .ignore_unmapped(false)
+        .boost(1.5)
+        .build()?;
+
+    let json = Query::from(nested_query).json()?;
+    let expected = json!({
+        "nested": {
+            "path": "reviews",
+            "query": {
+                "match": {
+                    "reviews.rating": "5"
+                }
+            },
+            "score_mode": "avg",
+            "ignore_unmapped": false,
+            "boost": 1.5
         }
     });
 
@@ -626,7 +711,7 @@ fn test_regexp_query_builder() -> Result<(), Error> {
         )
         .build()?;
 
-    let json = query.into_query().json()?;
+    let json = Query::from(query).json()?;
     let expected = json!({
         "regexp": {
             "name": {

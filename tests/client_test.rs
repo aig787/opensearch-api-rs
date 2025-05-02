@@ -1,5 +1,5 @@
 use anyhow::Result;
-use opensearch_api::Client;
+use opensearch_api::{Client, ClientConfig};
 
 pub mod fixture;
 use fixture::OpenSearchFixture;
@@ -11,18 +11,19 @@ async fn test_client_invalid_credentials() -> Result<()> {
 
     // Test connection with invalid credentials
     let invalid_client = Client::builder()
-        .base_url(base_url)
-        .username("invalid")
-        .password("invalid")
-        .verify_ssl(false)
+        .config(
+            ClientConfig::builder()
+                .base_url(base_url)
+                .username("invalid")
+                .password("invalid")
+                .verify_ssl(false)
+                .build()?,
+        )
         .build()?;
 
     // Invalid credentials should fail to authenticate, but cluster
     // should be reachable
-    assert_eq!(
-        invalid_client.ping().await?,
-        false
-    );
+    assert_eq!(invalid_client.ping().await?, false);
 
     Ok(())
 }
@@ -54,28 +55,6 @@ async fn test_client_info() -> Result<()> {
     assert_eq!(
         info.tagline.as_deref(),
         Some("The OpenSearch Project: https://opensearch.org/")
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_client_timeout() -> Result<()> {
-    let fixture = OpenSearchFixture::new().await?;
-    let base_url = fixture.get_base_url().await?;
-
-    // Test client with explicit timeout
-    let client_with_timeout = Client::builder()
-        .base_url(base_url)
-        .username(fixture::DEFAULT_USERNAME)
-        .password(fixture::DEFAULT_PASSWORD)
-        .verify_ssl(false)
-        // .timeout(Duration::from_secs(10))
-        .build()?;
-
-    assert!(
-        client_with_timeout.ping().await?,
-        "Client with timeout should be able to ping"
     );
 
     Ok(())

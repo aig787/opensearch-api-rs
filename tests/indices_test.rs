@@ -31,6 +31,17 @@ async fn create_test_index(fixture: &OpenSearchFixture, index_name: &str) -> Res
     Ok(())
 }
 
+/// Helper function to create multiple test indices
+async fn create_multiple_test_indices(
+    fixture: &OpenSearchFixture,
+    index_names: &[&str],
+) -> Result<()> {
+    for index_name in index_names {
+        create_test_index(fixture, index_name).await?;
+    }
+    Ok(())
+}
+
 #[tokio::test]
 async fn test_index_exists() -> Result<()> {
     let fixture = OpenSearchFixture::new().await?;
@@ -63,6 +74,69 @@ async fn test_index_exists() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_multiple_indices_exist() -> Result<()> {
+    let fixture = OpenSearchFixture::new().await?;
+    let prefix = "multi_exists_test";
+    let index_names: Vec<String> = (1..=3)
+        .map(|i| fixture.namespaced_index(&format!("{}_{}", prefix, i)))
+        .collect();
+
+    // Test non-existent indices
+    let exists = fixture
+        .client
+        .indices()
+        .exists(&index_names)
+        .build()?
+        .send()
+        .await?;
+    assert!(!exists, "Indices should not exist initially");
+
+    // Create indices
+    create_multiple_test_indices(
+        &fixture,
+        &index_names
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<&str>>(),
+    )
+    .await?;
+
+    // Test all indices exist
+    let exists = fixture
+        .client
+        .indices()
+        .exists(&index_names)
+        .build()?
+        .send()
+        .await?;
+    assert!(exists, "All indices should exist after creation");
+
+    // Create a list with one real and one non-existent index
+    let mixed_indices = vec![&index_names[0], "non_existent_index"];
+    let exists = fixture
+        .client
+        .indices()
+        .exists(&mixed_indices)
+        .build()?
+        .send()
+        .await?;
+    assert!(!exists, "When any index doesn't exist, should return false");
+
+    // Clean up
+    for index_name in &index_names {
+        fixture
+            .client
+            .indices()
+            .delete(index_name)
+            .build()?
+            .send()
+            .await?;
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_create_and_delete_index() -> Result<()> {
     let fixture = OpenSearchFixture::new().await?;
     let index_name = fixture.namespaced_index("create_delete_test");
@@ -89,9 +163,7 @@ async fn test_create_and_delete_index() -> Result<()> {
         }
     });
 
-    // Create aliases
-    let mut aliases = HashMap::new();
-    aliases.insert(format!("{}_alias", index_name), json!({}));
+    let alias_name = format!("{}_alias", index_name);
 
     // Create the index
     let create_response = fixture
@@ -99,7 +171,7 @@ async fn test_create_and_delete_index() -> Result<()> {
         .indices()
         .create(&index_name)
         .mappings(mappings)
-        .aliases(aliases)
+        .aliases([&alias_name])
         .build()?
         .send()
         .await
@@ -145,6 +217,56 @@ async fn test_create_and_delete_index() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_create_and_delete_multiple_indices() -> Result<()> {
+    let fixture = OpenSearchFixture::new().await?;
+    let prefix = "multi_create_delete_test";
+    let index_names: Vec<String> = (1..=3)
+        .map(|i| fixture.namespaced_index(&format!("{}_{}", prefix, i)))
+        .collect();
+
+    // Create multiple indices with basic settings
+    for index_name in &index_names {
+        create_test_index(&fixture, index_name).await?;
+    }
+
+    // Verify all indices exist
+    let exists = fixture
+        .client
+        .indices()
+        .exists(&index_names)
+        .build()?
+        .send()
+        .await?;
+    assert!(exists, "All indices should exist after creation");
+
+    // Delete multiple indices in one call
+    let delete_response = fixture
+        .client
+        .indices()
+        .delete(&index_names)
+        .build()?
+        .send()
+        .await?;
+
+    assert!(
+        delete_response.acknowledged,
+        "Multi-index deletion should be acknowledged"
+    );
+
+    // Verify no indices exist after deletion
+    let exists = fixture
+        .client
+        .indices()
+        .exists(&index_names)
+        .build()?
+        .send()
+        .await?;
+    assert!(!exists, "No indices should exist after deletion");
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_close_and_open_index() -> Result<()> {
     let fixture = OpenSearchFixture::new().await?;
     let index_name = fixture.namespaced_index("close_open_test");
@@ -179,6 +301,64 @@ async fn test_close_and_open_index() -> Result<()> {
         .client
         .indices()
         .delete(&index_name)
+        .build()?
+        .send()
+        .await?;
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_close_and_open_multiple_indices() -> Result<()> {
+    let fixture = OpenSearchFixture::new().await?;
+    let prefix = "multi_close_open_test";
+    let index_names: Vec<String> = (1..=3)
+        .map(|i| fixture.namespaced_index(&format!("{}_{}", prefix, i)))
+        .collect();
+
+    // Create multiple indices with basic settings
+    create_multiple_test_indices(
+        &fixture,
+        &index_names
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<&str>>(),
+    )
+    .await?;
+
+    // Close multiple indices in one call
+    let close_response = fixture
+        .client
+        .indices()
+        .close(&index_names)
+        .build()?
+        .send()
+        .await?;
+
+    assert!(
+        close_response.acknowledged,
+        "Closing multiple indices should be acknowledged"
+    );
+
+    // Open multiple indices in one call
+    let open_response = fixture
+        .client
+        .indices()
+        .open(&index_names)
+        .build()?
+        .send()
+        .await?;
+
+    assert!(
+        open_response.acknowledged,
+        "Opening multiple indices should be acknowledged"
+    );
+
+    // Clean up
+    fixture
+        .client
+        .indices()
+        .delete(&index_names)
         .build()?
         .send()
         .await?;
@@ -270,6 +450,96 @@ async fn test_get_and_update_settings() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_get_and_update_multiple_indices_settings() -> Result<()> {
+    let fixture = OpenSearchFixture::new().await?;
+    let prefix = "multi_settings_test";
+    let index_names: Vec<String> = (1..=3)
+        .map(|i| fixture.namespaced_index(&format!("{}_{}", prefix, i)))
+        .collect();
+
+    // Create multiple indices with specific settings
+    for index_name in &index_names {
+        let settings = IndexSettings::builder()
+            .number_of_shards(1)
+            .number_of_replicas(0)
+            .refresh_interval("1s")
+            .build()?;
+
+        fixture
+            .client
+            .indices()
+            .create(index_name)
+            .settings(settings)
+            .build()?
+            .send()
+            .await?;
+    }
+
+    // Get settings for multiple indices
+    let settings_response = fixture
+        .client
+        .indices()
+        .get_settings(&index_names)
+        .build()?
+        .send()
+        .await?;
+
+    // Verify settings for all indices
+    for index_name in &index_names {
+        let index_settings = &settings_response[index_name].settings.index;
+        assert_eq!(index_settings.number_of_shards, 1);
+        assert_eq!(index_settings.number_of_replicas, 0);
+        assert_eq!(index_settings.refresh_interval.as_ref().unwrap(), "1s");
+    }
+
+    // Update settings for multiple indices
+    let mut new_settings = HashMap::new();
+    new_settings.insert("number_of_replicas".to_string(), json!(1));
+    new_settings.insert("refresh_interval".to_string(), json!("5s"));
+
+    let update_response = fixture
+        .client
+        .indices()
+        .update_settings(&index_names)
+        .settings(new_settings)
+        .build()?
+        .send()
+        .await?;
+
+    assert!(update_response.acknowledged);
+
+    // Get updated settings
+    let updated_settings = fixture
+        .client
+        .indices()
+        .get_settings(&index_names)
+        .build()?
+        .send()
+        .await?;
+
+    // Verify updated settings for all indices
+    for index_name in &index_names {
+        let updated_index_settings = &updated_settings[index_name].settings.index;
+        assert_eq!(updated_index_settings.number_of_replicas, 1);
+        assert_eq!(
+            updated_index_settings.refresh_interval.as_ref().unwrap(),
+            "5s"
+        );
+    }
+
+    // Clean up
+    fixture
+        .client
+        .indices()
+        .delete(&index_names)
+        .build()?
+        .send()
+        .await?;
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_mappings() -> Result<()> {
     let fixture = OpenSearchFixture::new().await?;
     let index_name = fixture.namespaced_index("mappings_test");
@@ -328,12 +598,13 @@ async fn test_mappings() -> Result<()> {
         "text"
     );
 
-    // Update mappings with additional field
+    // Update mappings with additional date field with proper format
     let mut updated_properties = HashMap::new();
     updated_properties.insert(
         "date".to_string(),
         json!({
-            "type": "date"
+            "type": "date",
+            "format": "yyyy-MM-dd"
         }),
     );
 
@@ -503,6 +774,51 @@ async fn test_refresh_index() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_refresh_multiple_indices() -> Result<()> {
+    let fixture = OpenSearchFixture::new().await?;
+    let prefix = "multi_refresh_test";
+    let index_names: Vec<String> = (1..=3)
+        .map(|i| fixture.namespaced_index(&format!("{}_{}", prefix, i)))
+        .collect();
+
+    // Create multiple indices
+    create_multiple_test_indices(
+        &fixture,
+        &index_names
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<&str>>(),
+    )
+    .await?;
+
+    // Refresh multiple indices in one call
+    let refresh_response = fixture
+        .client
+        .indices()
+        .refresh(&index_names)
+        .build()?
+        .send()
+        .await?;
+
+    // Verify refresh response
+    assert!(
+        refresh_response._shards.successful >= 3,
+        "All shards should be successfully refreshed"
+    );
+
+    // Clean up
+    fixture
+        .client
+        .indices()
+        .delete(&index_names)
+        .build()?
+        .send()
+        .await?;
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_alias_with_filter() -> Result<()> {
     let fixture = OpenSearchFixture::new().await?;
     let index_name = fixture.namespaced_index("filtered_alias_test");
@@ -582,17 +898,14 @@ async fn test_combined_operations() -> Result<()> {
         }
     });
 
-    let mut aliases = HashMap::new();
     let alias_name = format!("{}_main", index_name);
-    aliases.insert(alias_name.clone(), json!({}));
-
     let create_response = fixture
         .client
         .indices()
         .create(&index_name)
         .settings(settings)
         .mappings(mappings)
-        .aliases(aliases)
+        .aliases([&alias_name])
         .build()?
         .send()
         .await?;

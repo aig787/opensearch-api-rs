@@ -1,6 +1,6 @@
 use opensearch_api::indices::IndexSettings;
 use opensearch_api::types::query::{MatchQuery, MatchQueryRule};
-use opensearch_api::Client;
+use opensearch_api::{Client, ClientConfig};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -17,9 +17,13 @@ struct Product {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a client
     let client = Client::builder()
-        .base_url("http://localhost:9200")
-        .username("admin")
-        .password("admin")
+        .config(
+            ClientConfig::builder()
+                .base_url("http://localhost:9200")
+                .username("admin")
+                .password("admin")
+                .build()?,
+        )
         .build()?;
 
     // Check if the cluster is available
@@ -82,20 +86,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     if let Some(response) = retrieved {
-        println!("Retrieved product: {} - ${}", response.source_ref_required().name, response.source_ref_required().price);
+        println!(
+            "Retrieved product: {} - ${}",
+            response.source_ref_required().name,
+            response.source_ref_required().price
+        );
     }
 
     // Search for documents
     let search_response = client
-        .search::<Product>()
-        .index(index_name)
+        .search::<Product>(index_name)
         .from(0)
         .size(10)
         .query(
             MatchQuery::builder()
                 .field("category", MatchQueryRule::simple("Electronics"))
-                .build()?
-                .into_query(),
+                .build()?,
         )
         .build()?
         .send()

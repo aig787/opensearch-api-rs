@@ -2,7 +2,7 @@ use opensearch_api::indices::IndexSettings;
 use opensearch_api::types::query::{
     BoolQuery, MatchQuery, MatchQueryRule, RangeQuery, RangeQueryRule, TermQuery, TermQueryRule,
 };
-use opensearch_api::Client;
+use opensearch_api::{Client, ClientConfig};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::error::Error;
@@ -21,9 +21,13 @@ struct Product {
 async fn main() -> Result<(), Box<dyn Error>> {
     // Create a client
     let client = Client::builder()
-        .base_url("http://localhost:9200")
-        .username("admin")
-        .password("admin")
+        .config(
+            ClientConfig::builder()
+                .base_url("http://localhost:9200")
+                .username("admin")
+                .password("admin")
+                .build()?,
+        )
         .build()?;
 
     let index_name = "my-test-index";
@@ -128,21 +132,24 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Refresh the index to make documents available for search
     println!("Refreshing index...");
-    client.documents().refresh(index_name).send().await?;
+    client
+        .documents()
+        .refresh(index_name)
+        .build()?
+        .send()
+        .await?;
 
     // Perform a match query - find products with "keyboard" in the name
     println!("\nPerforming match query for 'keyboard' in name field:");
 
     let search_response = client
-        .search::<Product>()
-        .index(index_name)
+        .search::<Product>(index_name)
         .from(0)
         .size(10)
         .query(
             MatchQuery::builder()
                 .field("name", MatchQueryRule::simple("keyboard"))
-                .build()?
-                .into_query(),
+                .build()?,
         )
         .build()?
         .send()
@@ -159,15 +166,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Perform a term query - find products in specific category
     println!("\nPerforming term query for 'Computer Accessories' category:");
     let search_response = client
-        .search::<Product>()
-        .index(index_name)
+        .search::<Product>(index_name)
         .from(0)
         .size(10)
         .query(
             TermQuery::builder()
                 .field("category", TermQueryRule::value("Computer"))
-                .build()?
-                .into_query(),
+                .build()?,
         )
         .build()?
         .send()
@@ -182,17 +187,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
             TermQuery::builder()
                 .field("in_stock", TermQueryRule::value(true))
                 .build()?
-                .into_query(),
+                .into(),
             RangeQuery::builder()
                 .field("price", RangeQueryRule::builder().lt(100).build()?)
                 .build()?
-                .into_query(),
+                .into(),
         ])
-        .build()?
-        .into_query();
+        .build()?;
     let search_response = client
-        .search::<Product>()
-        .index(index_name)
+        .search::<Product>(index_name)
         .from(0)
         .size(10)
         .query(query)

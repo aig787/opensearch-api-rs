@@ -1,9 +1,9 @@
 //! Document-related data types
 
+use crate::types::common::ShardStatistics;
 use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::types::common::ShardStatistics;
 
 /// Document metadata
 #[serde_with::skip_serializing_none]
@@ -41,8 +41,8 @@ pub enum WaitForActiveShards {
 }
 
 /// Options for indexing a document
-#[derive(Debug, Clone, Builder)]
-#[builder(setter(into, strip_option))]
+#[derive(Default, Debug, Clone, Builder)]
+#[builder(setter(into, strip_option), build_fn(error = "crate::Error"))]
 pub struct IndexOptions {
     /// Whether to refresh the affected shards after the operation
     #[builder(default)]
@@ -77,8 +77,8 @@ impl IndexOptions {
 }
 
 /// Options for retrieving a document
-#[derive(Debug, Clone, Builder)]
-#[builder(setter(into, strip_option))]
+#[derive(Default, Debug, Clone, Builder)]
+#[builder(setter(into, strip_option), build_fn(error = "crate::Error"))]
 pub struct GetOptions {
     /// Whether to include the _source field in the response
     #[builder(default)]
@@ -125,8 +125,8 @@ impl GetOptions {
 }
 
 /// Options for checking if a document exists
-#[derive(Debug, Clone, Builder)]
-#[builder(setter(into, strip_option))]
+#[derive(Default, Debug, Clone, Builder)]
+#[builder(setter(into, strip_option), build_fn(error = "crate::Error"))]
 pub struct ExistsOptions {
     /// Custom routing value
     #[builder(default)]
@@ -161,8 +161,8 @@ impl ExistsOptions {
 }
 
 /// Options for updating a document
-#[derive(Debug, Clone, Builder)]
-#[builder(setter(into, strip_option))]
+#[derive(Default, Debug, Clone, Builder)]
+#[builder(setter(into, strip_option), build_fn(error = "crate::Error"))]
 pub struct UpdateOptions {
     /// Whether to use the document as the upsert document
     #[builder(default = "Some(true)")]
@@ -170,7 +170,7 @@ pub struct UpdateOptions {
 
     /// Number of retries for conflict errors
     #[builder(default)]
-    pub retry_on_conflict: Option<u32>,
+    pub retry_on_conflict: Option<i32>,
 
     /// Whether to refresh the affected shards after the operation
     #[builder(default)]
@@ -201,8 +201,8 @@ impl UpdateOptions {
 }
 
 /// Options for deleting a document
-#[derive(Debug, Clone, Builder)]
-#[builder(setter(into, strip_option))]
+#[derive(Default, Debug, Clone, Builder)]
+#[builder(setter(into, strip_option), build_fn(error = "crate::Error"))]
 pub struct DeleteOptions {
     /// Whether to refresh the affected shards after the operation
     #[builder(default)]
@@ -236,7 +236,7 @@ impl DeleteOptions {
     }
 }
 /// Options for bulk operation
-#[derive(Debug, Clone, Builder, Default)]
+#[derive(Default, Debug, Clone, Builder)]
 #[builder(setter(strip_option))]
 pub struct BulkOptions {
     /// Refresh policy for the operation
@@ -260,7 +260,7 @@ impl BulkOptions {
 }
 
 /// Options for multi-get operation
-#[derive(Debug, Clone, Builder, Default)]
+#[derive(Default, Debug, Clone, Builder)]
 #[builder(setter(strip_option))]
 pub struct MgetOptions {
     /// Preference value for the shard selection
@@ -658,44 +658,6 @@ pub struct DeleteResponse {
     pub primary_term: u64,
 }
 
-/// Response for a bulk operation
-#[serde_with::skip_serializing_none]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct BulkResponse {
-    /// Time taken to execute the bulk operation in milliseconds
-    pub took: i64,
-
-    /// Whether the bulk operation timed out
-    pub timed_out: bool,
-
-    /// Information about the items in the bulk operation
-    pub items: Vec<BulkResponseItem>,
-
-    /// Information about shards involved in the operation
-    pub _shards: ShardStatistics,
-}
-
-/// Individual item in a bulk operation response
-#[serde_with::skip_serializing_none]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct BulkResponseItem {
-    /// Index operation response
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub index: Option<IndexResponse>,
-
-    /// Create operation response
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub create: Option<IndexResponse>,
-
-    /// Update operation response
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub update: Option<UpdateResponse>,
-
-    /// Delete operation response
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub delete: Option<DeleteResponse>,
-}
-
 /// Response for a document update operation
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -758,4 +720,176 @@ impl RefreshOptions {
 pub struct RefreshResponse {
     /// Number of shards that were successful
     pub _shards: ShardStatistics,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::documents::{DeleteResponse, GetResponse, IndexResponse};
+    use crate::types::common::ShardStatistics;
+    use crate::types::document::{DocumentMetadata, WaitForActiveShards};
+    use crate::Error;
+    use serde_json::{json, Value};
+
+    /// Helper function to test serialization and deserialization roundtrip
+    fn test_serde_roundtrip<T>(value: &T, expected_json: &str) -> Result<(), Error>
+    where
+        T: serde::Serialize + serde::de::DeserializeOwned + std::fmt::Debug + PartialEq,
+    {
+        // Serialize to string
+        let serialized = serde_json::to_string(&value)?;
+
+        // Parse both as Value for comparison that ignores formatting/whitespace
+        let value_json: Value = serde_json::from_str(&serialized)?;
+        let expected_value: Value = serde_json::from_str(expected_json)?;
+
+        assert_eq!(
+            value_json, expected_value,
+            "Serialized JSON doesn't match expected JSON"
+        );
+
+        // Deserialize back
+        let deserialized: T = serde_json::from_str(&serialized)?;
+
+        // Verify roundtrip
+        assert_eq!(
+            &deserialized, value,
+            "Deserialized value doesn't match original"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_document_metadata() -> Result<(), Error> {
+        let metadata = DocumentMetadata {
+            index: "test-index".to_string(),
+            id: "123".to_string(),
+            version: Some(1),
+            seq_no: Some(42),
+            primary_term: Some(1),
+        };
+
+        let expected_json = r#"{
+                    "_index": "test-index",
+                    "_id": "123",
+                    "_version": 1,
+                    "_seq_no": 42,
+                    "_primary_term": 1
+                }"#;
+
+        test_serde_roundtrip(&metadata, expected_json)
+    }
+
+    #[test]
+    fn test_wait_for_active_shards() -> Result<(), Error> {
+        let count = WaitForActiveShards::Count(2);
+        let expected_json = "2";
+        test_serde_roundtrip(&count, expected_json)?;
+
+        let all = WaitForActiveShards::Value("all".to_string());
+        let expected_json = r#""all""#;
+        test_serde_roundtrip(&all, expected_json)
+    }
+
+    #[test]
+    fn test_index_response() -> Result<(), Error> {
+        let response = IndexResponse {
+            index: "test-index".to_string(),
+            id: "123".to_string(),
+            version: 1,
+            result: "created".to_string(),
+            _shards: ShardStatistics {
+                total: 2,
+                successful: 2,
+                failed: 0,
+                failures: vec![],
+            },
+            seq_no: 0,
+            primary_term: 1,
+        };
+
+        let expected_json = r#"{
+                    "_index": "test-index",
+                    "_id": "123",
+                    "_version": 1,
+                    "result": "created",
+                    "_shards": {
+                        "total": 2,
+                        "successful": 2,
+                        "failed": 0,
+                        "failures": []
+                    },
+                    "_seq_no": 0,
+                    "_primary_term": 1
+                }"#;
+
+        test_serde_roundtrip(&response, expected_json)
+    }
+
+    #[test]
+    fn test_get_response() -> Result<(), Error> {
+        let response: GetResponse<serde_json::Value> = GetResponse {
+            index: "test-index".to_string(),
+            id: "123".to_string(),
+            found: true,
+            version: Some(1),
+            seq_no: Some(42),
+            primary_term: Some(1),
+            source: Some(json!({
+                "title": "Test Document",
+                "content": "This is a test document"
+            })),
+            fields: None,
+        };
+
+        let expected_json = r#"{
+                    "_index": "test-index",
+                    "_id": "123",
+                    "found": true,
+                    "_version": 1,
+                    "_seq_no": 42,
+                    "_primary_term": 1,
+                    "_source": {
+                        "title": "Test Document",
+                        "content": "This is a test document"
+                    }
+                }"#;
+
+        test_serde_roundtrip(&response, expected_json)
+    }
+
+    #[test]
+    fn test_delete_response() -> Result<(), Error> {
+        let response = DeleteResponse {
+            index: "test-index".to_string(),
+            id: "123".to_string(),
+            version: 2,
+            result: "deleted".to_string(),
+            _shards: ShardStatistics {
+                total: 2,
+                successful: 2,
+                failed: 0,
+                failures: vec![],
+            },
+            seq_no: 43,
+            primary_term: 1,
+        };
+
+        let expected_json = r#"{
+                    "_index": "test-index",
+                    "_id": "123",
+                    "_version": 2,
+                    "result": "deleted",
+                    "_shards": {
+                        "total": 2,
+                        "successful": 2,
+                        "failed": 0,
+                        "failures": []
+                    },
+                    "_seq_no": 43,
+                    "_primary_term": 1
+                }"#;
+
+        test_serde_roundtrip(&response, expected_json)
+    }
 }

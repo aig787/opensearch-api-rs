@@ -7,12 +7,12 @@
 //!
 //! ```rust,no_run
 //! use opensearch_api::Error;
+//! use opensearch_api::Client;
+//! use opensearch_api::types::query::MatchAllQuery;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Error> {
-//! use opensearch_api::Client;
-//! use opensearch_api::types::query::MatchAllQuery;
-//! let client = Client::builder()
+//!     let client = Client::builder()
 //!         .base_url("https://localhost:9200")
 //!         .username("admin")
 //!         .password("admin")
@@ -21,7 +21,7 @@
 //!         .build()?;
 //!
 //!     // Search using builder pattern
-//!     let response = client.search::<serde_json::Value>()
+//!     let response = client.search::<serde_json::Value>("index")
 //!         .from(0)
 //!         .size(10)
 //!         .query(MatchAllQuery::builder().build().unwrap())
@@ -40,6 +40,8 @@ pub(crate) mod client;
 pub(crate) mod document;
 pub(crate) mod error;
 pub mod types;
+#[macro_use]
+pub(crate) mod macros;
 
 #[cfg(feature = "client")]
 pub use client::namespaces::*;

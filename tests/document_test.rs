@@ -4,7 +4,9 @@ pub mod fixture;
 
 use crate::fixture::OpenSearchFixture;
 use anyhow::Result;
-use opensearch_api::types::document::{DeleteOptions, IndexOptions, UpdateOptions, WaitForActiveShards};
+use opensearch_api::types::document::{
+    DeleteOptions, IndexOptions, UpdateOptions, WaitForActiveShards,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -72,6 +74,7 @@ async fn test_index_document() -> Result<()> {
         .document(&doc)
         .id(doc_id)
         .options(IndexOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 
@@ -90,6 +93,7 @@ async fn test_index_document() -> Result<()> {
         .index(&index_name)
         .document(&doc)
         .options(IndexOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 
@@ -118,6 +122,7 @@ async fn test_get_document() -> Result<()> {
         .document(&doc)
         .id(doc_id)
         .options(IndexOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 
@@ -126,6 +131,7 @@ async fn test_get_document() -> Result<()> {
         .client
         .documents()
         .get::<TestDocument>(&index_name, doc_id)
+        .build()?
         .send()
         .await?;
 
@@ -144,6 +150,7 @@ async fn test_get_document() -> Result<()> {
         .client
         .documents()
         .get::<TestDocument>(&index_name, "nonexistent-doc")
+        .build()?
         .send()
         .await?;
 
@@ -158,6 +165,7 @@ async fn test_get_document() -> Result<()> {
         .documents()
         .get::<Value>(&index_name, doc_id)
         .source_includes(vec!["title".to_string(), "published".to_string()])
+        .build()?
         .send()
         .await?
         .unwrap();
@@ -198,6 +206,7 @@ async fn test_update_document() -> Result<()> {
         .document(&doc)
         .id(doc_id)
         .options(IndexOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 
@@ -208,6 +217,7 @@ async fn test_update_document() -> Result<()> {
         .documents()
         .update(&index_name, doc_id, &updated_doc)
         .options(UpdateOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 
@@ -225,6 +235,7 @@ async fn test_update_document() -> Result<()> {
         .client
         .documents()
         .get::<TestDocument>(&index_name, doc_id)
+        .build()?
         .send()
         .await?
         .unwrap();
@@ -246,6 +257,7 @@ async fn test_update_document() -> Result<()> {
         .documents()
         .update(&index_name, doc_id, &partial_update)
         .options(UpdateOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 
@@ -253,6 +265,7 @@ async fn test_update_document() -> Result<()> {
         .client
         .documents()
         .get::<Value>(&index_name, doc_id)
+        .build()?
         .send()
         .await?
         .unwrap();
@@ -280,6 +293,7 @@ async fn test_update_document() -> Result<()> {
         .update(&index_name, upsert_id, &upsert_doc)
         .doc_as_upsert(true)
         .options(UpdateOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 
@@ -288,6 +302,7 @@ async fn test_update_document() -> Result<()> {
         .client
         .documents()
         .get::<TestDocument>(&index_name, upsert_id)
+        .build()?
         .send()
         .await?;
 
@@ -315,6 +330,7 @@ async fn test_delete_document() -> Result<()> {
         .document(&doc)
         .id(doc_id)
         .options(IndexOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 
@@ -323,6 +339,7 @@ async fn test_delete_document() -> Result<()> {
         .client
         .documents()
         .exists(&index_name, doc_id)
+        .build()?
         .send()
         .await?;
 
@@ -334,6 +351,7 @@ async fn test_delete_document() -> Result<()> {
         .documents()
         .delete(&index_name, doc_id)
         .options(DeleteOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 
@@ -351,6 +369,7 @@ async fn test_delete_document() -> Result<()> {
         .client
         .documents()
         .exists(&index_name, doc_id)
+        .build()?
         .send()
         .await?;
 
@@ -365,6 +384,7 @@ async fn test_delete_document() -> Result<()> {
         .documents()
         .delete(&index_name, "nonexistent-doc-delete")
         .options(DeleteOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 
@@ -385,6 +405,7 @@ async fn test_document_exists() -> Result<()> {
         .client
         .documents()
         .exists(&index_name, doc_id)
+        .build()?
         .send()
         .await?;
 
@@ -398,6 +419,7 @@ async fn test_document_exists() -> Result<()> {
         .document(&doc)
         .id(doc_id)
         .options(IndexOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 
@@ -406,6 +428,7 @@ async fn test_document_exists() -> Result<()> {
         .client
         .documents()
         .exists(&index_name, doc_id)
+        .build()?
         .send()
         .await?;
 
@@ -421,7 +444,13 @@ async fn test_document_exists() -> Result<()> {
         .index(&index_name)
         .document(&doc)
         .id(doc_with_routing)
-        .options(IndexOptions::builder().refresh("true").routing(routing_value).build()?)
+        .options(
+            IndexOptions::builder()
+                .refresh("true")
+                .routing(routing_value)
+                .build()?,
+        )
+        .build()?
         .send()
         .await?;
 
@@ -431,6 +460,7 @@ async fn test_document_exists() -> Result<()> {
         .documents()
         .exists(&index_name, doc_with_routing)
         .routing(routing_value)
+        .build()?
         .send()
         .await?;
 
@@ -454,6 +484,7 @@ async fn test_refresh_index() -> Result<()> {
         .index(&index_name)
         .document(&TestDocument::new_sample())
         .id("test-refresh-doc")
+        .build()?
         .send()
         .await?;
 
@@ -462,6 +493,7 @@ async fn test_refresh_index() -> Result<()> {
         .client
         .documents()
         .refresh(&index_name)
+        .build()?
         .send()
         .await?;
 
@@ -474,6 +506,7 @@ async fn test_refresh_index() -> Result<()> {
         .client
         .documents()
         .exists(&index_name, "test-refresh-doc")
+        .build()?
         .send()
         .await?;
 
@@ -495,7 +528,13 @@ async fn test_index_options() -> Result<()> {
         .index(&index_name)
         .document(&doc)
         .id("test-options-doc")
-        .options(IndexOptions::builder().refresh("true").wait_for_active_shards(WaitForActiveShards::Count(1)).build()?)
+        .options(
+            IndexOptions::builder()
+                .refresh("true")
+                .wait_for_active_shards(WaitForActiveShards::Count(1))
+                .build()?,
+        )
+        .build()?
         .send()
         .await?;
 
@@ -508,7 +547,13 @@ async fn test_index_options() -> Result<()> {
         .index(&index_name)
         .document(&doc)
         .id("test-timeout-doc")
-        .options(IndexOptions::builder().refresh("true").timeout("5s").build()?)
+        .options(
+            IndexOptions::builder()
+                .refresh("true")
+                .timeout("5s")
+                .build()?,
+        )
+        .build()?
         .send()
         .await?;
 
@@ -532,6 +577,7 @@ async fn test_get_options() -> Result<()> {
         .document(&doc)
         .id(doc_id)
         .options(IndexOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 
@@ -541,6 +587,7 @@ async fn test_get_options() -> Result<()> {
         .documents()
         .get::<TestDocument>(&index_name, doc_id)
         .realtime(false)
+        .build()?
         .send()
         .await?;
 
@@ -552,6 +599,7 @@ async fn test_get_options() -> Result<()> {
         .documents()
         .get::<TestDocument>(&index_name, doc_id)
         .preference("_local")
+        .build()?
         .send()
         .await?;
 
@@ -575,6 +623,7 @@ async fn test_update_options() -> Result<()> {
         .document(&doc)
         .id(doc_id)
         .options(IndexOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 
@@ -586,6 +635,7 @@ async fn test_update_options() -> Result<()> {
         .update(&index_name, doc_id, &updated_doc)
         .retry_on_conflict(3)
         .options(UpdateOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 
@@ -598,6 +648,7 @@ async fn test_update_options() -> Result<()> {
         .update(&index_name, doc_id, &json!({"views": 50}))
         .timeout("5s")
         .options(UpdateOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 
@@ -621,6 +672,7 @@ async fn test_delete_options() -> Result<()> {
         .document(&doc)
         .id(doc_id)
         .options(IndexOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 
@@ -631,6 +683,7 @@ async fn test_delete_options() -> Result<()> {
         .delete(&index_name, doc_id)
         .timeout("5s")
         .options(DeleteOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 
@@ -654,7 +707,13 @@ async fn test_document_operations_with_routing() -> Result<()> {
         .index(&index_name)
         .document(&doc)
         .id(doc_id)
-        .options(IndexOptions::builder().refresh("true").routing(routing_value).build()?)
+        .options(
+            IndexOptions::builder()
+                .refresh("true")
+                .routing(routing_value)
+                .build()?,
+        )
+        .build()?
         .send()
         .await?;
 
@@ -664,6 +723,7 @@ async fn test_document_operations_with_routing() -> Result<()> {
         .documents()
         .get::<TestDocument>(&index_name, doc_id)
         .routing(routing_value)
+        .build()?
         .send()
         .await?;
 
@@ -674,6 +734,7 @@ async fn test_document_operations_with_routing() -> Result<()> {
         .client
         .documents()
         .get::<TestDocument>(&index_name, doc_id)
+        .build()?
         .send()
         .await?;
 
@@ -686,6 +747,7 @@ async fn test_document_operations_with_routing() -> Result<()> {
         .update(&index_name, doc_id, &TestDocument::updated_sample())
         .routing(routing_value)
         .options(UpdateOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 
@@ -696,6 +758,7 @@ async fn test_document_operations_with_routing() -> Result<()> {
         .delete(&index_name, doc_id)
         .routing(routing_value)
         .options(DeleteOptions::builder().refresh("true").build()?)
+        .build()?
         .send()
         .await?;
 

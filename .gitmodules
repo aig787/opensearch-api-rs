@@ -1,3 +1,6 @@
 [submodule "opensearch-api-specification"]
-	path = opensearch-api-specification
+	path = context/opensearch-api-specification
 	url = ssh://git@github.com/opensearch-project/opensearch-api-specification
+[submodule "context/documentation-website"]
+	path = context/documentation-website
+	url = git@github.com:opensearch-project/documentation-website.git

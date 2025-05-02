@@ -1,6 +1,7 @@
 //! Search namespace for OpenSearch
 
 use crate::error::Error;
+use crate::types::aggregations::Aggregations;
 use crate::types::query::*;
 use crate::types::search::*;
 use crate::Client;
@@ -12,7 +13,11 @@ use std::collections::HashMap;
 
 /// Builder for creating and executing search queries
 #[derive(Debug, Clone, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct SearchQuery<T>
 where
     T: Default + for<'de> Deserialize<'de> + Send + Sync,
@@ -22,7 +27,7 @@ where
     client: Client,
 
     /// The index to search (required)
-    #[builder(setter(into), default)]
+    #[builder(setter(into))]
     index: String,
 
     /// The search query (required)
@@ -39,11 +44,20 @@ where
 
     /// Sorting criteria for search results
     #[builder(setter(strip_option), default)]
-    sort: Option<Vec<Sort>>,
+    sort: Option<Vec<SortTerm>>,
 
     /// Fields to include in the result
+    /// Controls whether the _source field should be returned
     #[builder(setter(strip_option), default)]
-    source: Option<SourceFilter>,
+    source: Option<bool>,
+
+    /// Fields to include in the source
+    #[builder(setter(strip_option), default)]
+    source_includes: Option<Vec<String>>,
+
+    /// Fields to exclude from the source
+    #[builder(setter(strip_option), default)]
+    source_excludes: Option<Vec<String>>,
 
     /// Highlighting options
     #[builder(setter(strip_option), default)]
@@ -51,7 +65,7 @@ where
 
     /// Aggregations to perform
     #[builder(setter(strip_option), default)]
-    aggregations: Option<HashMap<String, Aggregation>>,
+    aggregations: Option<Aggregations>,
 
     /// Search after for pagination
     #[builder(setter(strip_option), default)]
@@ -181,32 +195,61 @@ where
     pub async fn send(self) -> Result<SearchResponse<T>, Error> {
         let index_str = self.index;
         let mut path = format!("/{}/_search", index_str);
+        let mut query_params = Vec::new();
 
-        // Add scroll parameter as query parameter if provided
+        // Add parameters that should be in query string according to the OpenSearch API
         if let Some(scroll_val) = &self.scroll {
-            path = format!("{}?scroll={}", path, scroll_val);
+            query_params.push(("scroll", scroll_val.clone()));
         }
 
+        if let Some(from_val) = &self.from {
+            query_params.push(("from", from_val.to_string()));
+        }
+
+        if let Some(size_val) = &self.size {
+            query_params.push(("size", size_val.to_string()));
+        }
+
+        // Add source parameters to query string if they are simple forms
+        if let Some(source_val) = &self.source {
+            query_params.push(("_source", source_val.to_string()));
+        }
+
+        if let Some(source_includes_val) = &self.source_includes {
+            query_params.push(("_source_includes", source_includes_val.join(",")));
+        }
+
+        if let Some(source_excludes_val) = &self.source_excludes {
+            query_params.push(("_source_excludes", source_excludes_val.join(",")));
+        }
+
+        if let Some(stored_fields_val) = &self.stored_fields {
+            query_params.push(("stored_fields", stored_fields_val.join(",")));
+        }
+
+        if let Some(explain_val) = &self.explain {
+            query_params.push(("explain", explain_val.to_string()));
+        }
+
+        if let Some(version_val) = &self.version {
+            query_params.push(("version", version_val.to_string()));
+        }
+
+        // Add query parameters to path if any exist
+        if !query_params.is_empty() {
+            let query_string: Vec<String> = query_params
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect();
+            path = format!("{}?{}", path, query_string.join("&"));
+        }
+
+        // Start with just the query in the body
         let mut body = json!({
             "query": self.query,
         });
 
-        if let Some(from_val) = self.from {
-            body["from"] = json!(from_val);
-        }
-
-        if let Some(size_val) = self.size {
-            body["size"] = json!(size_val);
-        }
-
-        if let Some(sort_val) = self.sort {
-            body["sort"] = json!(sort_val);
-        }
-
-        if let Some(source_val) = self.source {
-            body["_source"] = json!(source_val);
-        }
-
+        // These complex parameters stay in the request body
         if let Some(highlight_val) = self.highlight {
             body["highlight"] = json!(highlight_val);
         }
@@ -223,20 +266,13 @@ where
             body["script_fields"] = json!(script_fields_val);
         }
 
-        if let Some(stored_fields_val) = self.stored_fields {
-            body["stored_fields"] = json!(stored_fields_val);
-        }
-
-        if let Some(explain_val) = self.explain {
-            body["explain"] = json!(explain_val);
-        }
-
-        if let Some(version_val) = self.version {
-            body["version"] = json!(version_val);
-        }
-
         if let Some(min_score_val) = self.min_score {
             body["min_score"] = json!(min_score_val);
+        }
+
+        // Add sort to the request body per OpenSearch docs
+        if let Some(sort_val) = self.sort {
+            body["sort"] = json!(sort_val);
         }
 
         self.client
@@ -367,12 +403,13 @@ impl DeletePointInTimeQuery {
 
 impl Client {
     /// Create a search query builder
-    pub fn search<T>(&self) -> SearchQueryBuilder<T>
+    pub fn search<T>(&self, index: impl Into<String>) -> SearchQueryBuilder<T>
     where
         T: Default + Clone + for<'de> Deserialize<'de> + Send + Sync + 'static,
     {
         let mut builder = SearchQueryBuilder::default();
         builder.client(self.clone());
+        builder.index(index);
         builder
     }
 

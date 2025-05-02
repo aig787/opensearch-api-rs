@@ -6,11 +6,9 @@ use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::types::document::{DeleteOptions, ExistsOptions, GetOptions, IndexOptions, UpdateOptions, WaitForActiveShards};
+use crate::types::document::{BulkOptions, DeleteOptions, ExistsOptions, GetOptions, IndexOptions, MgetOptions, UpdateOptions, WaitForActiveShards};
 /// Re-export document types for easier access
-pub use crate::types::document::{
-    BulkResponse, DeleteResponse, GetResponse, IndexResponse, UpdateResponse,
-};
+pub use crate::types::document::{DeleteResponse, GetResponse, IndexResponse, UpdateResponse};
 
 /// Client namespace for document-related operations
 #[derive(Debug, Clone)]
@@ -20,7 +18,7 @@ pub struct DocumentsNamespace {
 
 /// Builder for index document requests
 #[derive(Debug, Clone, Builder)]
-#[builder(pattern = "owned", setter(into, strip_option))]
+#[builder(pattern = "owned", setter(into, strip_option), build_fn(error = "crate::Error"))]
 pub struct IndexRequest<'a, T: Serialize + ?Sized + Clone = serde_json::Value> {
     /// Documents namespace reference
     #[builder(pattern = "immutable")]
@@ -46,6 +44,48 @@ impl<'a, T: Clone + Serialize + ?Sized> IndexRequestBuilder<'a, T> {
     /// Build and send the index request to the server
     pub async fn send(self) -> Result<IndexResponse, Error> {
         self.build().unwrap().send().await
+    }
+
+    /// Set the refresh option
+    pub fn refresh(mut self, refresh: impl Into<String>) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.refresh = Some(refresh.into());
+        self
+    }
+
+    /// Set the routing option
+    pub fn routing(mut self, routing: impl Into<String>) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.routing = Some(routing.into());
+        self
+    }
+
+    /// Set the timeout option
+    pub fn timeout(mut self, timeout: impl Into<String>) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.timeout = Some(timeout.into());
+        self
+    }
+
+    /// Set the version option
+    pub fn version(mut self, version: i64) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.version = Some(version);
+        self
+    }
+
+    /// Set the version_type option
+    pub fn version_type(mut self, version_type: impl Into<String>) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.version_type = Some(version_type.into());
+        self
+    }
+
+    /// Set the wait_for_active_shards option
+    pub fn wait_for_active_shards(mut self, wait_for_active_shards: WaitForActiveShards) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.wait_for_active_shards = Some(wait_for_active_shards);
+        self
     }
 }
 
@@ -119,133 +159,110 @@ impl<'a, T: Serialize + ?Sized + Clone> IndexRequest<'a, T> {
 }
 
 /// Builder for get document requests
-#[derive(Debug, Clone)]
-pub struct GetRequestBuilder<'a, T: for<'de> Deserialize<'de> + Send + Sync> {
+#[derive(Debug, Clone, Builder)]
+#[builder(pattern = "owned", setter(into, strip_option), build_fn(error = "crate::Error"))]
+pub struct GetRequest<'a, T: Clone + for<'de> Deserialize<'de> + Send + Sync> {
     /// Documents namespace reference
+    #[builder(pattern = "immutable")]
     client: &'a DocumentsNamespace,
     /// Index to get the document from
+    #[builder(pattern = "immutable")]
     index: String,
     /// Document ID
+    #[builder(pattern = "immutable")]
     id: String,
     /// Get options
+    #[builder(default)]
     options: Option<GetOptions>,
     /// Type parameter marker
+    #[builder(setter(skip), default = "std::marker::PhantomData")]
     _marker: std::marker::PhantomData<T>,
 }
 
-impl<'a, T: for<'de> Deserialize<'de> + Send + Sync> GetRequestBuilder<'a, T> {
-    /// Create a new get request builder
-    pub(crate) fn new(
-        client: &'a DocumentsNamespace,
-        index: impl Into<String>,
-        id: impl Into<String>,
-    ) -> Self {
-        Self {
-            client,
-            index: index.into(),
-            id: id.into(),
-            options: None,
-            _marker: std::marker::PhantomData,
-        }
-    }
-
-    /// Set the get options
-    pub fn options(mut self, options: GetOptions) -> Self {
-        self.options = Some(options);
-        self
-    }
-
+impl<'a, T: Clone + for<'de> Deserialize<'de> + Send + Sync> GetRequestBuilder<'a, T> {
     /// Set the source option
     pub fn source(mut self, source: bool) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| GetOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.source = Some(source);
-        self.options = Some(options);
         self
     }
 
     /// Set the source_includes option
-    pub fn source_includes(mut self, source_includes: Vec<String>) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| GetOptions::builder().build().unwrap());
-        options.source_includes = Some(source_includes);
-        self.options = Some(options);
+    pub fn source_includes(mut self, source_includes: Vec<impl Into<String>>) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.source_includes = Some(source_includes.into_iter().map(Into::into).collect());
         self
     }
 
     /// Set the source_excludes option
-    pub fn source_excludes(mut self, source_excludes: Vec<String>) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| GetOptions::builder().build().unwrap());
-        options.source_excludes = Some(source_excludes);
-        self.options = Some(options);
+    pub fn source_excludes(mut self, source_excludes: Vec<impl Into<String>>) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.source_excludes = Some(source_excludes.into_iter().map(Into::into).collect());
         self
     }
 
     /// Set the routing option
     pub fn routing(mut self, routing: impl Into<String>) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| GetOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.routing = Some(routing.into());
-        self.options = Some(options);
         self
     }
 
     /// Set the preference option
     pub fn preference(mut self, preference: impl Into<String>) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| GetOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.preference = Some(preference.into());
-        self.options = Some(options);
         self
     }
 
     /// Set the realtime option
     pub fn realtime(mut self, realtime: bool) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| GetOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.realtime = Some(realtime);
-        self.options = Some(options);
         self
     }
 
     /// Set the refresh option
     pub fn refresh(mut self, refresh: bool) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| GetOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.refresh = Some(refresh);
-        self.options = Some(options);
         self
     }
 
     /// Set the version option
     pub fn version(mut self, version: i64) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| GetOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.version = Some(version);
-        self.options = Some(options);
         self
     }
 
     /// Set the version_type option
     pub fn version_type(mut self, version_type: impl Into<String>) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| GetOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.version_type = Some(version_type.into());
-        self.options = Some(options);
         self
     }
 
-    /// Send the get request to the server
+    /// Build and send the get request
+    pub async fn send(self) -> Result<Option<GetResponse<T>>, Error> {
+        self.build().unwrap().send().await
+    }
+}
+
+impl<'a, T: Clone + for<'de> Deserialize<'de> + Send + Sync> GetRequest<'a, T> {
+    /// Create a new get request builder
+    pub(crate) fn new(
+        client: &'a DocumentsNamespace,
+        index: impl Into<String>,
+        id: impl Into<String>,
+    ) -> GetRequestBuilder<'a, T> {
+        GetRequestBuilder::default()
+            .client(client)
+            .index(index)
+            .id(id)
+    }
+
+    /// Build and send the get request
     pub async fn send(self) -> Result<Option<GetResponse<T>>, Error> {
         let index_str = self.index;
         let id_str = self.id;
@@ -361,114 +378,98 @@ impl<'a, T: for<'de> Deserialize<'de> + Send + Sync> GetRequestBuilder<'a, T> {
 }
 
 /// Builder for update document requests
-#[derive(Debug, Clone)]
-pub struct UpdateRequestBuilder<'a, T: Serialize + ?Sized> {
+#[derive(Debug, Clone, Builder)]
+#[builder(pattern = "owned", setter(into, strip_option), build_fn(error = "crate::Error"))]
+pub struct UpdateRequest<'a, T: Clone + Serialize + ?Sized> {
     /// Documents namespace reference
+    #[builder(pattern = "immutable")]
     client: &'a DocumentsNamespace,
     /// Index to update the document in
+    #[builder(pattern = "immutable")]
     index: String,
     /// Document ID
+    #[builder(pattern = "immutable")]
     id: String,
     /// Document to update with
+    #[builder(pattern = "immutable")]
     document: &'a T,
     /// Update options
+    #[builder(default)]
     options: Option<UpdateOptions>,
 }
 
-impl<'a, T: Serialize + ?Sized> UpdateRequestBuilder<'a, T> {
+impl<'a, T: Clone + Serialize + ?Sized> UpdateRequestBuilder<'a, T> {
+    /// Set the doc_as_upsert option
+    pub fn doc_as_upsert(mut self, doc_as_upsert: bool) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.doc_as_upsert = Some(doc_as_upsert);
+        self
+    }
+
+    /// Set the retry_on_conflict option
+    pub fn retry_on_conflict(mut self, retry_on_conflict: i32) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.retry_on_conflict = Some(retry_on_conflict);
+        self
+    }
+
+    /// Set the refresh option
+    pub fn refresh(mut self, refresh: impl Into<String>) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.refresh = Some(refresh.into());
+        self
+    }
+
+    /// Set the routing option
+    pub fn routing(mut self, routing: impl Into<String>) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.routing = Some(routing.into());
+        self
+    }
+
+    /// Set the timeout option
+    pub fn timeout(mut self, timeout: impl Into<String>) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.timeout = Some(timeout.into());
+        self
+    }
+
+    /// Set the wait_for_active_shards option
+    pub fn wait_for_active_shards(mut self, wait_for_active_shards: WaitForActiveShards) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.wait_for_active_shards = Some(wait_for_active_shards);
+        self
+    }
+
+    /// Set the require_alias option
+    pub fn require_alias(mut self, require_alias: bool) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.require_alias = Some(require_alias);
+        self
+    }
+
+    /// Build and send the update request
+    pub async fn send(self) -> Result<UpdateResponse, Error> {
+        self.build().unwrap().send().await
+    }
+}
+
+impl<'a, T: Clone + Serialize + ?Sized> UpdateRequest<'a, T> {
     /// Create a new update request builder
     pub(crate) fn new(
         client: &'a DocumentsNamespace,
         index: impl Into<String>,
         id: impl Into<String>,
         document: &'a T,
-    ) -> Self {
-        Self {
-            client,
-            index: index.into(),
-            id: id.into(),
-            document,
-            options: None,
-        }
+    ) -> UpdateRequestBuilder<'a, T> {
+        UpdateRequestBuilder::default()
+            .client(client)
+            .index(index)
+            .id(id)
+            .document(document)
     }
 
-    /// Set the update options
-    pub fn options(mut self, options: UpdateOptions) -> Self {
-        self.options = Some(options);
-        self
-    }
-
-    /// Set the doc_as_upsert option
-    pub fn doc_as_upsert(mut self, doc_as_upsert: bool) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| UpdateOptions::builder().build().unwrap());
-        options.doc_as_upsert = Some(doc_as_upsert);
-        self.options = Some(options);
-        self
-    }
-
-    /// Set the retry_on_conflict option
-    pub fn retry_on_conflict(mut self, retry_on_conflict: u32) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| UpdateOptions::builder().build().unwrap());
-        options.retry_on_conflict = Some(retry_on_conflict);
-        self.options = Some(options);
-        self
-    }
-
-    /// Set the refresh option
-    pub fn refresh(mut self, refresh: impl Into<String>) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| UpdateOptions::builder().build().unwrap());
-        options.refresh = Some(refresh.into());
-        self.options = Some(options);
-        self
-    }
-
-    /// Set the routing option
-    pub fn routing(mut self, routing: impl Into<String>) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| UpdateOptions::builder().build().unwrap());
-        options.routing = Some(routing.into());
-        self.options = Some(options);
-        self
-    }
-
-    /// Set the timeout option
-    pub fn timeout(mut self, timeout: impl Into<String>) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| UpdateOptions::builder().build().unwrap());
-        options.timeout = Some(timeout.into());
-        self.options = Some(options);
-        self
-    }
-
-    /// Set the wait_for_active_shards option
-    pub fn wait_for_active_shards(mut self, wait_for_active_shards: WaitForActiveShards) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| UpdateOptions::builder().build().unwrap());
-        options.wait_for_active_shards = Some(wait_for_active_shards);
-        self.options = Some(options);
-        self
-    }
-
-    /// Set the require_alias option
-    pub fn require_alias(mut self, require_alias: bool) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| UpdateOptions::builder().build().unwrap());
-        options.require_alias = Some(require_alias);
-        self.options = Some(options);
-        self
-    }
-
-    /// Send the update request to the server
+    /// Build and send the update request
     pub async fn send(self) -> Result<UpdateResponse, Error> {
         let index_str = self.index;
         let id_str = self.id;
@@ -532,100 +533,86 @@ impl<'a, T: Serialize + ?Sized> UpdateRequestBuilder<'a, T> {
 }
 
 /// Builder for delete document requests
-#[derive(Debug, Clone)]
-pub struct DeleteRequestBuilder<'a> {
+#[derive(Debug, Clone, Builder)]
+#[builder(pattern = "owned", setter(into, strip_option), build_fn(error = "crate::Error"))]
+pub struct DeleteRequest<'a> {
     /// Documents namespace reference
+    #[builder(pattern = "immutable")]
     client: &'a DocumentsNamespace,
     /// Index to delete the document from
+    #[builder(pattern = "immutable")]
     index: String,
     /// Document ID
+    #[builder(pattern = "immutable")]
     id: String,
     /// Delete options
+    #[builder(default)]
     options: Option<DeleteOptions>,
 }
 
 impl<'a> DeleteRequestBuilder<'a> {
-    /// Create a new delete request builder
-    pub(crate) fn new(
-        client: &'a DocumentsNamespace,
-        index: impl Into<String>,
-        id: impl Into<String>,
-    ) -> Self {
-        Self {
-            client,
-            index: index.into(),
-            id: id.into(),
-            options: None,
-        }
-    }
-
-    /// Set the delete options
-    pub fn options(mut self, options: DeleteOptions) -> Self {
-        self.options = Some(options);
-        self
-    }
-
     /// Set the refresh option
     pub fn refresh(mut self, refresh: impl Into<String>) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| DeleteOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.refresh = Some(refresh.into());
-        self.options = Some(options);
         self
     }
 
     /// Set the routing option
     pub fn routing(mut self, routing: impl Into<String>) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| DeleteOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.routing = Some(routing.into());
-        self.options = Some(options);
         self
     }
 
     /// Set the timeout option
     pub fn timeout(mut self, timeout: impl Into<String>) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| DeleteOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.timeout = Some(timeout.into());
-        self.options = Some(options);
         self
     }
 
     /// Set the version option
     pub fn version(mut self, version: i64) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| DeleteOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.version = Some(version);
-        self.options = Some(options);
         self
     }
 
     /// Set the version_type option
     pub fn version_type(mut self, version_type: impl Into<String>) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| DeleteOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.version_type = Some(version_type.into());
-        self.options = Some(options);
         self
     }
 
     /// Set the wait_for_active_shards option
     pub fn wait_for_active_shards(mut self, wait_for_active_shards: WaitForActiveShards) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| DeleteOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.wait_for_active_shards = Some(wait_for_active_shards);
-        self.options = Some(options);
         self
     }
 
-    /// Send the delete request to the server
+    /// Build and send the delete request
+    pub async fn send(self) -> Result<DeleteResponse, Error> {
+        self.build().unwrap().send().await
+    }
+}
+
+impl<'a> DeleteRequest<'a> {
+    /// Create a new delete request builder
+    pub(crate) fn new(
+        client: &'a DocumentsNamespace,
+        index: impl Into<String>,
+        id: impl Into<String>,
+    ) -> DeleteRequestBuilder<'a> {
+        DeleteRequestBuilder::default()
+            .client(client)
+            .index(index)
+            .id(id)
+    }
+
+    /// Build and send the delete request to the server
     pub async fn send(self) -> Result<DeleteResponse, Error> {
         let index_str = self.index;
         let id_str = self.id;
@@ -720,97 +707,83 @@ impl<'a> DeleteRequestBuilder<'a> {
 }
 
 /// Builder for exists document requests
-#[derive(Debug, Clone)]
-pub struct ExistsRequestBuilder<'a> {
+#[derive(Debug, Clone, Builder)]
+#[builder(pattern = "owned", setter(into, strip_option), build_fn(error = "crate::Error"))]
+pub struct ExistsRequest<'a> {
     /// Documents namespace reference
+    #[builder(pattern = "immutable")]
     client: &'a DocumentsNamespace,
     /// Index to check for the document in
+    #[builder(pattern = "immutable")]
     index: String,
     /// Document ID
+    #[builder(pattern = "immutable")]
     id: String,
     /// Exists options
+    #[builder(default)]
     options: Option<ExistsOptions>,
 }
 
 impl<'a> ExistsRequestBuilder<'a> {
-    /// Create a new exists request builder
-    pub(crate) fn new(
-        client: &'a DocumentsNamespace,
-        index: impl Into<String>,
-        id: impl Into<String>,
-    ) -> Self {
-        Self {
-            client,
-            index: index.into(),
-            id: id.into(),
-            options: None,
-        }
-    }
-
-    /// Set the exists options
-    pub fn options(mut self, options: ExistsOptions) -> Self {
-        self.options = Some(options);
-        self
-    }
-
     /// Set the routing option
     pub fn routing(mut self, routing: impl Into<String>) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| ExistsOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.routing = Some(routing.into());
-        self.options = Some(options);
         self
     }
 
     /// Set the preference option
     pub fn preference(mut self, preference: impl Into<String>) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| ExistsOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.preference = Some(preference.into());
-        self.options = Some(options);
         self
     }
 
     /// Set the realtime option
     pub fn realtime(mut self, realtime: bool) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| ExistsOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.realtime = Some(realtime);
-        self.options = Some(options);
         self
     }
 
     /// Set the refresh option
     pub fn refresh(mut self, refresh: bool) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| ExistsOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.refresh = Some(refresh);
-        self.options = Some(options);
         self
     }
 
     /// Set the version option
     pub fn version(mut self, version: i64) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| ExistsOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.version = Some(version);
-        self.options = Some(options);
         self
     }
 
     /// Set the version_type option
     pub fn version_type(mut self, version_type: impl Into<String>) -> Self {
-        let mut options = self
-            .options
-            .unwrap_or_else(|| ExistsOptions::builder().build().unwrap());
+        let options = self.options.get_or_insert_default().get_or_insert_default();
         options.version_type = Some(version_type.into());
-        self.options = Some(options);
         self
+    }
+
+    /// Build and send the exists request
+    pub async fn send(self) -> Result<bool, Error> {
+        self.build().unwrap().send().await
+    }
+}
+
+impl<'a> ExistsRequest<'a> {
+    /// Create a new exists request builder
+    pub(crate) fn new(
+        client: &'a DocumentsNamespace,
+        index: impl Into<String>,
+        id: impl Into<String>,
+    ) -> ExistsRequestBuilder<'a> {
+        ExistsRequestBuilder::default()
+            .client(client)
+            .index(index)
+            .id(id)
     }
 
     /// Send the exists request to the server
@@ -889,21 +862,24 @@ impl<'a> ExistsRequestBuilder<'a> {
 }
 
 /// Builder for refresh requests
-#[derive(Debug, Clone)]
-pub struct RefreshRequestBuilder<'a> {
+#[derive(Debug, Clone, Builder)]
+#[builder(pattern = "owned", setter(into, strip_option), build_fn(error = "crate::Error"))]
+pub struct RefreshRequest<'a> {
     /// Documents namespace reference
+    #[builder(pattern = "immutable")]
     client: &'a DocumentsNamespace,
     /// Index to refresh
+    #[builder(pattern = "immutable")]
     index: String,
 }
 
-impl<'a> RefreshRequestBuilder<'a> {
+impl<'a> RefreshRequest<'a> {
     /// Create a new refresh request builder
-    pub(crate) fn new(client: &'a DocumentsNamespace, index: impl Into<String>) -> Self {
-        Self {
-            client,
-            index: index.into(),
-        }
+    pub(crate) fn new(
+        client: &'a DocumentsNamespace,
+        index: impl Into<String>,
+    ) -> RefreshRequestBuilder<'a> {
+        RefreshRequestBuilder::default().client(client).index(index)
     }
 
     /// Send the refresh request to the server
@@ -1001,9 +977,9 @@ impl DocumentsNamespace {
         id: impl Into<String>,
     ) -> GetRequestBuilder<'a, T>
     where
-        T: for<'de> Deserialize<'de> + Send + Sync,
+        T: Clone + for<'de> Deserialize<'de> + Send + Sync,
     {
-        GetRequestBuilder::new(self, index, id)
+        GetRequest::new(self, index, id)
     }
 
     /// Create a builder for updating a document
@@ -1033,9 +1009,9 @@ impl DocumentsNamespace {
         document: &'a T,
     ) -> UpdateRequestBuilder<'a, T>
     where
-        T: Serialize + ?Sized,
+        T: Clone + Serialize + ?Sized,
     {
-        UpdateRequestBuilder::new(self, index, id, document)
+        UpdateRequest::new(self, index, id, document)
     }
 
     /// Create a builder for deleting a document
@@ -1056,12 +1032,8 @@ impl DocumentsNamespace {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn delete<'a>(
-        &'a self,
-        index: impl Into<String>,
-        id: impl Into<String>,
-    ) -> DeleteRequestBuilder<'a> {
-        DeleteRequestBuilder::new(self, index, id)
+    pub fn delete(&self, index: impl Into<String>, id: impl Into<String>) -> DeleteRequestBuilder {
+        DeleteRequest::new(self, index, id)
     }
 
     /// Create a builder for checking if a document exists
@@ -1083,12 +1055,8 @@ impl DocumentsNamespace {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn exists<'a>(
-        &'a self,
-        index: impl Into<String>,
-        id: impl Into<String>,
-    ) -> ExistsRequestBuilder<'a> {
-        ExistsRequestBuilder::new(self, index, id)
+    pub fn exists(&self, index: impl Into<String>, id: impl Into<String>) -> ExistsRequestBuilder {
+        ExistsRequest::new(self, index, id)
     }
 
     /// Create a builder for refreshing an index
@@ -1103,13 +1071,76 @@ impl DocumentsNamespace {
     /// # let client = Client::builder().base_url("http://localhost:9200").build()?;
     /// let response = client.documents()
     ///     .refresh("my_index")
+    ///     .build()?
     ///     .send()
     ///     .await?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn refresh<'a>(&'a self, index: impl Into<String>) -> RefreshRequestBuilder<'a> {
-        RefreshRequestBuilder::new(self, index)
+    pub fn refresh(&self, index: impl Into<String>) -> RefreshRequestBuilder {
+        RefreshRequest::new(self, index)
+    }
+
+    /// Create a builder for bulk operations
+    ///
+    /// This allows for a fluent API to execute bulk operations.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use opensearch_api::{Client, Error};
+    /// # use serde_json::json;
+    /// # async fn example() -> Result<(), Error> {
+    /// # let client = Client::builder().base_url("http://localhost:9200").build()?;
+    /// let bulk_body = [
+    ///     json!({"index": {"_index": "test", "_id": "1"}}),
+    ///     json!({"field": "value1"}),
+    ///     json!({"index": {"_index": "test", "_id": "2"}}),
+    ///     json!({"field": "value2"}),
+    /// ];
+    /// let response = client.documents()
+    ///     .bulk()
+    ///     .operations(bulk_body.as_slice())
+    ///     .refresh("true")
+    ///     .build()?
+    ///     .send()
+    ///     .await?;
+    /// Ok(())
+    /// }
+    /// ```
+    pub fn bulk(&self) -> BulkRequestBuilder {
+        BulkRequest::new(self)
+    }
+
+    /// Create a builder for multi-get operations
+    ///
+    /// This allows for a fluent API to execute multi-get operations.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use opensearch_api::{Client, Error};
+    /// # use serde_json::json;
+    /// # async fn example() -> Result<(), Error> {
+    /// # let client = Client::builder().base_url("http://localhost:9200").build()?;
+    /// let docs = vec![
+    ///     json!({"_index": "test", "_id": "1"}),
+    ///     json!({"_index": "test", "_id": "2"}),
+    /// ];
+    /// let response = client.documents()
+    ///     .mget::<serde_json::Value>()
+    ///     .docs(docs.as_slice())
+    ///     .build()?
+    ///     .send()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn mget<'a, T>(&'a self) -> MgetRequestBuilder<'a, T>
+    where
+        T: Clone + for<'de> Deserialize<'de> + Send + Sync,
+    {
+        MgetRequest::new(self)
     }
 }
 
@@ -1117,5 +1148,213 @@ impl crate::client::Client {
     /// Access the documents namespace
     pub fn documents(&self) -> DocumentsNamespace {
         DocumentsNamespace::new(self.clone())
+    }
+}
+
+/// Builder for bulk operation requests
+#[derive(Debug, Clone, Builder)]
+#[builder(pattern = "owned", setter(into, strip_option), build_fn(error = "crate::Error"))]
+pub struct BulkRequest<'a> {
+    /// Documents namespace reference
+    #[builder(pattern = "immutable")]
+    client: &'a DocumentsNamespace,
+
+    /// Operations to perform in bulk
+    #[builder(default)]
+    operations: Option<&'a [serde_json::Value]>,
+
+    /// Bulk options
+    #[builder(default)]
+    options: Option<BulkOptions>,
+}
+
+impl<'a> BulkRequestBuilder<'a> {
+    /// Set the refresh option
+    pub fn refresh(mut self, refresh: impl Into<String>) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.refresh = Some(refresh.into());
+        self
+    }
+
+    /// Set the timeout option
+    pub fn timeout(mut self, timeout: impl Into<String>) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.timeout = Some(timeout.into());
+        self
+    }
+
+    /// Set the wait_for_active_shards option
+    pub fn wait_for_active_shards(mut self, wait_for_active_shards: WaitForActiveShards) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.wait_for_active_shards = Some(wait_for_active_shards);
+        self
+    }
+
+    /// Build and send the bulk request
+    pub async fn send(self) -> Result<serde_json::Value, Error> {
+        self.build().unwrap().send().await
+    }
+}
+
+impl<'a> BulkRequest<'a> {
+    /// Create a new bulk request builder
+    pub(crate) fn new(client: &'a DocumentsNamespace) -> BulkRequestBuilder<'a> {
+        BulkRequestBuilder::default().client(client)
+    }
+
+    /// Build and send the bulk request
+    pub async fn send(self) -> Result<serde_json::Value, Error> {
+        let mut path = "/_bulk".to_string();
+
+        // Add query parameters from options
+        let mut query_params = Vec::new();
+        if let Some(options) = &self.options {
+            if let Some(refresh) = &options.refresh {
+                query_params.push(format!("refresh={}", refresh));
+            }
+
+            if let Some(timeout) = &options.timeout {
+                query_params.push(format!("timeout={}", timeout));
+            }
+
+            if let Some(wait_for_active_shards) = &options.wait_for_active_shards {
+                let value = match wait_for_active_shards {
+                    WaitForActiveShards::Value(v) => v.to_string(),
+                    WaitForActiveShards::Count(n) => n.to_string(),
+                };
+                query_params.push(format!("wait_for_active_shards={}", value));
+            }
+        }
+
+        // Add query parameters to path
+        if !query_params.is_empty() {
+            path.push_str(&format!("?{}", query_params.join("&")));
+        }
+
+        // Create the request body
+        let mut body = String::new();
+        if let Some(operations) = self.operations {
+            for operation in operations {
+                body.push_str(&(serde_json::to_string(operation).unwrap() + "\n"));
+            }
+        }
+
+        log::debug!("Sending BULK request to path: {}", path);
+        self.client
+            .client
+            .request_with_string_body::<serde_json::Value>(Method::POST, &path, Some(body))
+            .await
+    }
+}
+
+/// Builder for multi-get operation requests
+#[derive(Debug, Clone, Builder)]
+#[builder(pattern = "owned", setter(into, strip_option), build_fn(error = "crate::Error"))]
+pub struct MgetRequest<'a, T: Clone + for<'de> Deserialize<'de> + Send + Sync> {
+    /// Documents namespace reference
+    #[builder(pattern = "immutable")]
+    client: &'a DocumentsNamespace,
+
+    /// Index to get documents from (optional)
+    #[builder(default)]
+    index: Option<String>,
+
+    /// Document IDs to get (when index is specified)
+    #[builder(default)]
+    ids: Option<Vec<String>>,
+
+    /// Documents to get (when no index is specified)
+    #[builder(default)]
+    docs: Option<&'a [serde_json::Value]>,
+
+    /// Mget options
+    #[builder(default)]
+    options: Option<MgetOptions>,
+
+    /// Type parameter marker
+    #[builder(setter(skip), default = "std::marker::PhantomData")]
+    _marker: std::marker::PhantomData<T>,
+}
+
+/// Response from a multi-get operation
+#[derive(Debug, Clone, Deserialize)]
+pub struct MgetResponse<T> {
+    /// Documents retrieved
+    pub docs: Vec<GetResponse<T>>,
+}
+
+impl<'a, T: Clone + for<'de> Deserialize<'de> + Send + Sync> MgetRequestBuilder<'a, T> {
+    /// Set the preference option
+    pub fn preference(mut self, preference: impl Into<String>) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.preference = Some(preference.into());
+        self
+    }
+
+    /// Set the realtime option
+    pub fn realtime(mut self, realtime: bool) -> Self {
+        let options = self.options.get_or_insert_default().get_or_insert_default();
+        options.realtime = Some(realtime);
+        self
+    }
+
+    /// Build and send the mget request
+    pub async fn send(self) -> Result<MgetResponse<T>, Error> {
+        self.build().unwrap().send().await
+    }
+}
+
+impl<'a, T: Clone + for<'de> Deserialize<'de> + Send + Sync> MgetRequest<'a, T> {
+    /// Create a new mget request builder
+    pub(crate) fn new(client: &'a DocumentsNamespace) -> MgetRequestBuilder<'a, T> {
+        MgetRequestBuilder::default().client(client)
+    }
+
+    /// Build and send the mget request
+    pub async fn send(self) -> Result<MgetResponse<T>, Error> {
+        let mut path = if let Some(index) = &self.index {
+            format!("/{}/_mget", index)
+        } else {
+            "/_mget".to_string()
+        };
+
+        // Add query parameters from options
+        let mut query_params = Vec::new();
+        if let Some(options) = &self.options {
+            if let Some(preference) = &options.preference {
+                query_params.push(format!("preference={}", preference));
+            }
+
+            if let Some(realtime) = options.realtime {
+                query_params.push(format!("realtime={}", realtime));
+            }
+        }
+
+        // Add query parameters to path
+        if !query_params.is_empty() {
+            path.push_str(&format!("?{}", query_params.join("&")));
+        }
+
+        // Create the request body
+        let body = if let Some(ids) = &self.ids {
+            if self.index.is_none() {
+                return Err(Error::InvalidArgument(
+                    "Index must be specified when using IDs".to_string(),
+                ));
+            }
+            serde_json::json!({ "ids": ids })
+        } else if let Some(docs) = &self.docs {
+            serde_json::json!({ "docs": docs })
+        } else {
+            return Err(Error::InvalidArgument(
+                "Either 'ids' or 'docs' must be specified".to_string(),
+            ));
+        };
+
+        log::debug!("Sending MGET request to path: {}", path);
+        self.client
+            .client
+            .request::<_, MgetResponse<T>>(Method::POST, &path, Some(&body))
+            .await
     }
 }

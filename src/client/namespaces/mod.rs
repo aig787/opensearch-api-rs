@@ -7,4 +7,5 @@ pub mod indices;
 pub mod documents;
 pub mod cluster;
 pub mod search;
+mod bulk;
 

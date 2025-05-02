@@ -2,11 +2,108 @@
 
 use crate::error::Error;
 use derive_builder::Builder;
+use derive_more::From;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::fmt;
 use std::str::FromStr;
+
+/// A type that can be used as an index or indices specification
+pub trait Indices {
+    /// Convert to a comma-separated list of indices
+    fn to_index_list(&self) -> String;
+}
+
+impl Indices for String {
+    fn to_index_list(&self) -> String {
+        self.clone()
+    }
+}
+
+impl<'a> Indices for &'a str {
+    fn to_index_list(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl<T: AsRef<str>> Indices for Vec<T> {
+    fn to_index_list(&self) -> String {
+        self.iter()
+            .map(|s| s.as_ref())
+            .collect::<Vec<&str>>()
+            .join(",")
+    }
+}
+
+impl<T: AsRef<str>, const N: usize> Indices for [T; N] {
+    fn to_index_list(&self) -> String {
+        self.iter()
+            .map(|s| s.as_ref())
+            .collect::<Vec<&str>>()
+            .join(",")
+    }
+}
+
+/// A wrapper for index or indices that can be converted to a comma-separated list
+#[derive(Debug, Clone)]
+pub struct IndexList(String);
+
+impl IndexList {
+    /// Create a new index list from anything that can be converted to indices
+    pub fn new(indices: impl Indices) -> Self {
+        Self(indices.to_index_list())
+    }
+}
+
+impl fmt::Display for IndexList {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<String> for IndexList {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for IndexList {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl From<&String> for IndexList {
+    fn from(s: &String) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl From<&Vec<String>> for IndexList {
+    fn from(v: &Vec<String>) -> Self {
+        Self(v.join(","))
+    }
+}
+
+impl From<&Vec<&str>> for IndexList {
+    fn from(v: &Vec<&str>) -> Self {
+        Self(v.join(","))
+    }
+}
+
+impl<T: AsRef<str>> From<Vec<T>> for IndexList {
+    fn from(v: Vec<T>) -> Self {
+        Self(Indices::to_index_list(&v))
+    }
+}
+
+impl<T: AsRef<str>, const N: usize> From<[T; N]> for IndexList {
+    fn from(a: [T; N]) -> Self {
+        Self(Indices::to_index_list(&a))
+    }
+}
 
 /// Client namespace for index-related operations
 #[derive(Debug, Clone)]
@@ -20,8 +117,8 @@ impl IndicesNamespace {
         Self { client }
     }
 
-    /// Check if an index exists
-    pub fn exists(&self, index: impl Into<String>) -> ExistsIndexRequestBuilder {
+    /// Check if index or indices exist
+    pub fn exists(&self, index: impl Into<IndexList>) -> ExistsIndexRequestBuilder {
         let mut builder = ExistsIndexRequestBuilder::default();
         builder.index(index.into());
         builder.client(self.client.clone());
@@ -33,9 +130,9 @@ impl IndicesNamespace {
 #[derive(Debug, Clone, Builder)]
 #[builder(pattern = "mutable")]
 pub struct ExistsIndexRequest {
-    /// The index name
+    /// The index or indices to check
     #[builder(setter(into))]
-    pub index: String,
+    pub index: IndexList,
 
     /// Client reference
     #[builder(private)]
@@ -222,7 +319,7 @@ pub struct CreateIndexRequest {
     pub mappings: Option<Value>,
 
     /// Index aliases
-    #[builder(setter(strip_option), default)]
+    #[builder(setter(custom), default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub aliases: Option<HashMap<String, Value>>,
 
@@ -231,10 +328,10 @@ pub struct CreateIndexRequest {
     #[serde(skip)]
     client: Option<crate::client::Client>,
 
-    /// Index name
+    /// Index name (note: create index API only supports a single index)
     #[builder(private)]
     #[serde(skip)]
-    index: Option<String>,
+    index: String,
 }
 
 impl CreateIndexRequest {
@@ -245,8 +342,7 @@ impl CreateIndexRequest {
 
     /// Send the request to the server
     pub async fn send(mut self) -> Result<crate::types::indices::CreateIndexResponse, Error> {
-        let index_name = self.index.take().expect("Index name must be set");
-        let path = format!("/{}", index_name);
+        let path = format!("/{}", self.index);
         let client = self.client.take().expect("Client must be set");
 
         client
@@ -256,6 +352,28 @@ impl CreateIndexRequest {
                 Some(&self),
             )
             .await
+    }
+}
+
+/// Custom implementation for CreateIndexRequestBuilder to handle the aliases HashSet
+impl CreateIndexRequestBuilder {
+    /// Add an alias to the index
+    pub fn alias(mut self, alias: impl Into<String>) -> Self {
+        let alias_set = self.aliases.get_or_insert_default().get_or_insert_default();
+        alias_set.insert(alias.into(), json!({}));
+        self
+    }
+
+    /// Add multiple aliases to the index
+    pub fn aliases<I, S>(mut self, aliases: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        for alias in aliases {
+            self = self.alias(alias);
+        }
+        self
     }
 }
 
@@ -270,9 +388,9 @@ impl crate::client::Client {
 #[derive(Debug, Clone, Builder)]
 #[builder(pattern = "owned")]
 pub struct DeleteIndexRequest {
-    /// The index name
+    /// The index or indices to delete
     #[builder(setter(into))]
-    pub index: String,
+    pub index: IndexList,
 
     /// Client reference
     #[builder(private)]
@@ -299,9 +417,9 @@ impl DeleteIndexRequest {
 #[derive(Debug, Clone, Builder)]
 #[builder(pattern = "owned")]
 pub struct CloseIndexRequest {
-    /// The index name
+    /// The index or indices to close
     #[builder(setter(into))]
-    pub index: String,
+    pub index: IndexList,
 
     /// Client reference
     #[builder(private)]
@@ -328,9 +446,9 @@ impl CloseIndexRequest {
 #[derive(Debug, Clone, Builder)]
 #[builder(pattern = "mutable")]
 pub struct OpenIndexRequest {
-    /// The index name
+    /// The index or indices to open
     #[builder(setter(into))]
-    pub index: String,
+    pub index: IndexList,
 
     /// Client reference
     #[builder(private)]
@@ -357,9 +475,9 @@ impl OpenIndexRequest {
 #[derive(Debug, Clone, Builder)]
 #[builder(pattern = "mutable")]
 pub struct GetIndexSettingsRequest {
-    /// The index name
+    /// The index or indices to get settings for
     #[builder(setter(into))]
-    pub index: String,
+    pub index: IndexList,
 
     /// Client reference
     #[builder(private)]
@@ -409,10 +527,10 @@ pub struct UpdateIndexSettingsRequest {
     #[serde(skip)]
     client: Option<crate::client::Client>,
 
-    /// Index name
+    /// Index or indices to update settings for
     #[builder(private)]
     #[serde(skip)]
-    index: Option<String>,
+    index: Option<IndexList>,
 }
 
 impl UpdateIndexSettingsRequest {
@@ -425,8 +543,8 @@ impl UpdateIndexSettingsRequest {
     pub async fn send(
         mut self,
     ) -> Result<crate::types::indices::UpdateIndexSettingsResponse, Error> {
-        let index_name = self.index.take().expect("Index name must be set");
-        let path = format!("/{}/_settings", index_name);
+        let index_list = self.index.take().expect("Index list must be set");
+        let path = format!("/{}/_settings", index_list);
         let client = self.client.take().expect("Client must be set");
 
         client
@@ -439,9 +557,9 @@ impl UpdateIndexSettingsRequest {
 #[derive(Debug, Clone, Builder)]
 #[builder(pattern = "mutable")]
 pub struct GetMappingRequest {
-    /// The index name
+    /// The index or indices to get mappings for
     #[builder(setter(into))]
-    pub index: String,
+    pub index: IndexList,
 
     /// Client reference
     #[builder(private)]
@@ -483,10 +601,10 @@ pub struct PutMappingRequest {
     #[serde(skip)]
     client: Option<crate::client::Client>,
 
-    /// Index name
+    /// Index or indices to put mapping for
     #[builder(private)]
     #[serde(skip)]
-    index: Option<String>,
+    index: Option<IndexList>,
 }
 
 impl PutMappingRequest {
@@ -497,8 +615,8 @@ impl PutMappingRequest {
 
     /// Send the request to the server
     pub async fn send(mut self) -> Result<crate::types::indices::PutMappingResponse, Error> {
-        let index_name = self.index.take().expect("Index name must be set");
-        let path = format!("/{}/_mapping", index_name);
+        let index_list = self.index.take().expect("Index list must be set");
+        let path = format!("/{}/_mapping", index_list);
         let client = self.client.take().expect("Client must be set");
 
         client
@@ -515,9 +633,9 @@ impl PutMappingRequest {
 #[derive(Debug, Clone, Builder)]
 #[builder(pattern = "mutable")]
 pub struct GetAliasesRequest {
-    /// The index name
+    /// The index or indices to get aliases for
     #[builder(setter(into))]
-    pub index: String,
+    pub index: IndexList,
 
     /// Client reference
     #[builder(private)]
@@ -564,7 +682,7 @@ pub struct UpdateAliasesRequest {
 #[derive(Debug, Clone, Serialize, Builder)]
 #[builder(pattern = "mutable", setter(strip_option, into))]
 pub struct AddAliasAction {
-    /// Index
+    /// Index or indices
     pub index: String,
     /// Alias
     pub alias: String,
@@ -586,19 +704,55 @@ impl AddAliasAction {
     pub fn builder() -> AddAliasActionBuilder {
         AddAliasActionBuilder::default()
     }
+
+    /// Create a new add alias action with multiple indices
+    pub fn with_indices(indices: impl Indices, alias: impl Into<String>) -> Self {
+        Self {
+            index: indices.to_index_list(),
+            alias: alias.into(),
+            filter: None,
+            routing: None,
+            is_write_index: None,
+        }
+    }
+}
+
+impl RemoveAliasAction {
+    /// Create a new remove alias action
+    pub fn new(index: impl Into<String>, alias: impl Into<String>) -> Self {
+        Self {
+            index: index.into(),
+            alias: alias.into(),
+        }
+    }
+
+    /// Create a new remove alias action with multiple indices
+    pub fn with_indices(indices: impl Indices, alias: impl Into<String>) -> Self {
+        Self {
+            index: indices.to_index_list(),
+            alias: alias.into(),
+        }
+    }
 }
 
 /// Remove alias action properties
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Builder)]
+#[builder(pattern = "mutable", setter(strip_option, into))]
 pub struct RemoveAliasAction {
-    /// Index
+    /// Index or indices
     pub index: String,
     /// Alias
     pub alias: String,
 }
 
+impl RemoveAliasAction {
+    pub fn builder() -> RemoveAliasActionBuilder {
+        RemoveAliasActionBuilder::default()
+    }
+}
+
 /// Alias action
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, From)]
 #[serde(untagged)]
 pub enum AliasAction {
     /// Add an alias
@@ -611,6 +765,16 @@ pub enum AliasAction {
         /// Remove action
         remove: RemoveAliasAction,
     },
+}
+
+impl AliasAction {
+    pub fn add() -> AddAliasActionBuilder {
+        AddAliasActionBuilder::default()
+    }
+
+    pub fn remove() -> RemoveAliasActionBuilder {
+        RemoveAliasActionBuilder::default()
+    }
 }
 
 impl UpdateAliasesRequest {
@@ -638,9 +802,9 @@ impl UpdateAliasesRequest {
 #[derive(Debug, Clone, Builder)]
 #[builder(pattern = "mutable")]
 pub struct RefreshIndexRequest {
-    /// The index name
+    /// The index or indices to refresh
     #[builder(setter(into))]
-    pub index: String,
+    pub index: IndexList,
 
     /// Client reference
     #[builder(private)]
@@ -665,28 +829,29 @@ impl RefreshIndexRequest {
 
 impl IndicesNamespace {
     /// Create an index with the given settings
+    /// Note: Create index API only supports a single index name
     pub fn create(&self, index: impl Into<String>) -> CreateIndexRequestBuilder {
-        CreateIndexRequestBuilder::default()
-            .client(Some(self.client.clone()))
-            .index(Some(index.into()))
+        let mut builder = CreateIndexRequestBuilder::default();
+        builder.client = Some(Some(self.client.clone()));
+        builder.index(index.into())
     }
 
-    /// Delete an index
-    pub fn delete(&self, index: impl Into<String>) -> DeleteIndexRequestBuilder {
+    /// Delete indices
+    pub fn delete(&self, index: impl Into<IndexList>) -> DeleteIndexRequestBuilder {
         DeleteIndexRequestBuilder::default()
             .index(index.into())
             .client(self.client.clone())
     }
 
-    /// Close an index
-    pub fn close(&self, index: impl Into<String>) -> CloseIndexRequestBuilder {
+    /// Close indices
+    pub fn close(&self, index: impl Into<IndexList>) -> CloseIndexRequestBuilder {
         CloseIndexRequestBuilder::default()
             .index(index.into())
             .client(self.client.clone())
     }
 
-    /// Open an index
-    pub fn open(&self, index: impl Into<String>) -> OpenIndexRequestBuilder {
+    /// Open indices
+    pub fn open(&self, index: impl Into<IndexList>) -> OpenIndexRequestBuilder {
         let mut builder = OpenIndexRequestBuilder::default();
         builder.index(index.into());
         builder.client(self.client.clone());
@@ -694,7 +859,7 @@ impl IndicesNamespace {
     }
 
     /// Get index settings
-    pub fn get_settings(&self, index: impl Into<String>) -> GetIndexSettingsRequestBuilder {
+    pub fn get_settings(&self, index: impl Into<IndexList>) -> GetIndexSettingsRequestBuilder {
         let mut builder = GetIndexSettingsRequestBuilder::default();
         builder.index(index.into());
         builder.client(self.client.clone());
@@ -702,7 +867,10 @@ impl IndicesNamespace {
     }
 
     /// Update index settings
-    pub fn update_settings(&self, index: impl Into<String>) -> UpdateIndexSettingsRequestBuilder {
+    pub fn update_settings(
+        &self,
+        index: impl Into<IndexList>,
+    ) -> UpdateIndexSettingsRequestBuilder {
         let mut builder = UpdateIndexSettingsRequestBuilder::default();
         builder.client(Some(self.client.clone()));
         builder.index(Some(index.into()));
@@ -710,7 +878,7 @@ impl IndicesNamespace {
     }
 
     /// Get mappings
-    pub fn get_mapping(&self, index: impl Into<String>) -> GetMappingRequestBuilder {
+    pub fn get_mapping(&self, index: impl Into<IndexList>) -> GetMappingRequestBuilder {
         let mut builder = GetMappingRequestBuilder::default();
         builder.index(index.into());
         builder.client(self.client.clone());
@@ -718,7 +886,7 @@ impl IndicesNamespace {
     }
 
     /// Put mappings
-    pub fn put_mapping(&self, index: impl Into<String>) -> PutMappingRequestBuilder {
+    pub fn put_mapping(&self, index: impl Into<IndexList>) -> PutMappingRequestBuilder {
         let mut builder = PutMappingRequestBuilder::default();
         builder.client(Some(self.client.clone()));
         builder.index(Some(index.into()));
@@ -726,7 +894,7 @@ impl IndicesNamespace {
     }
 
     /// Get aliases
-    pub fn get_aliases(&self, index: impl Into<String>) -> GetAliasesRequestBuilder {
+    pub fn get_aliases(&self, index: impl Into<IndexList>) -> GetAliasesRequestBuilder {
         let mut builder = GetAliasesRequestBuilder::default();
         builder.index(index.into());
         builder.client(self.client.clone());
@@ -740,8 +908,8 @@ impl IndicesNamespace {
         builder
     }
 
-    /// Refresh an index
-    pub fn refresh(&self, index: impl Into<String>) -> RefreshIndexRequestBuilder {
+    /// Refresh indices
+    pub fn refresh(&self, index: impl Into<IndexList>) -> RefreshIndexRequestBuilder {
         let mut builder = RefreshIndexRequestBuilder::default();
         builder.index(index.into());
         builder.client(self.client.clone());

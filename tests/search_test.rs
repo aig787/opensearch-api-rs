@@ -190,13 +190,11 @@ async fn test_match_query() -> Result<()> {
             "content".to_string(),
             MatchQueryRule::Simple("search".to_string()),
         )
-        .build()?
-        .into_query();
+        .build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -230,13 +228,11 @@ async fn test_term_query() -> Result<()> {
             "tags".to_string(),
             TermQueryRule::value(serde_json::Value::String("tutorial".to_string())),
         )
-        .build()?
-        .into_query();
+        .build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -270,13 +266,11 @@ async fn test_range_query() -> Result<()> {
                 .gte(serde_json::Value::from(4.5))
                 .build()?,
         )
-        .build()?
-        .into_query();
+        .build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -305,27 +299,23 @@ async fn test_bool_query() -> Result<()> {
             "published".to_string(),
             MatchQueryRule::Simple("true".to_string()),
         )
-        .build()?
-        .into_query();
+        .build()?;
 
     let should_query = TermQuery::builder()
         .field(
             "tags".to_string(),
             TermQueryRule::value(serde_json::Value::String("tutorial".to_string())),
         )
-        .build()?
-        .into_query();
+        .build()?;
 
     let query = BoolQuery::builder()
-        .must(vec![must_query])
-        .should(vec![should_query])
-        .build()?
-        .into_query();
+        .must(vec![must_query.into()])
+        .should(vec![should_query.into()])
+        .build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -350,15 +340,11 @@ async fn test_exists_query() -> Result<()> {
     common::index_test_documents(&fixture, index_name).await?;
     let index = fixture.namespaced_index(index_name);
 
-    let query = ExistsQuery::builder()
-        .field("rating".to_string())
-        .build()?
-        .into_query();
+    let query = ExistsQuery::builder().field("rating".to_string()).build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -385,13 +371,11 @@ async fn test_query_string_query() -> Result<()> {
 
     let query = QueryStringQuery::builder()
         .query("content:performance OR title:optimization".to_string())
-        .build()?
-        .into_query();
+        .build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -431,13 +415,11 @@ async fn test_wildcard_query() -> Result<()> {
             "title".to_string(),
             WildcardQueryRule::simple("*Queries*".to_string()),
         )
-        .build()?
-        .into_query();
+        .build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -467,13 +449,11 @@ async fn test_prefix_query() -> Result<()> {
             "title".to_string(),
             PrefixQueryRule::simple("Open".to_string()),
         )
-        .build()?
-        .into_query();
+        .build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -498,12 +478,11 @@ async fn test_match_all_query() -> Result<()> {
     common::index_test_documents(&fixture, index_name).await?;
     let index = fixture.namespaced_index(index_name);
 
-    let query = MatchAllQuery::builder().build()?.into_query();
+    let query = MatchAllQuery::builder().build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -523,12 +502,11 @@ async fn test_match_none_query() -> Result<()> {
     common::index_test_documents(&fixture, index_name).await?;
     let index = fixture.namespaced_index(index_name);
 
-    let query = MatchNoneQuery::simple().into_query();
+    let query = MatchNoneQuery::simple();
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -553,13 +531,11 @@ async fn test_match_phrase_query() -> Result<()> {
             "content".to_string(),
             MatchPhraseQueryRule::simple("powerful search".to_string()),
         )
-        .build()?
-        .into_query();
+        .build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -596,13 +572,11 @@ async fn test_match_phrase_prefix_query() -> Result<()> {
                 .max_expansions(10)
                 .build()?,
         )
-        .build()?
-        .into_query();
+        .build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -628,13 +602,11 @@ async fn test_multi_match_query() -> Result<()> {
             "content".to_string(),
             "tags".to_string(),
         ])
-        .build()?
-        .into_query();
+        .build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -656,13 +628,11 @@ async fn test_ids_query() -> Result<()> {
 
     let query = IdsQuery::builder()
         .values(vec!["1".to_string(), "3".to_string()])
-        .build()?
-        .into_query();
+        .build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -699,13 +669,11 @@ async fn test_fuzzy_query() -> Result<()> {
                 .value("optimzng".to_string())
                 .build()?,
         )
-        .build()?
-        .into_query();
+        .build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -729,13 +697,11 @@ async fn test_regexp_query() -> Result<()> {
             "title".to_string(),
             RegexpQueryRule::simple(".*Optimization.*".to_string()),
         )
-        .build()?
-        .into_query();
+        .build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -768,13 +734,11 @@ async fn test_terms_query() -> Result<()> {
                 serde_json::Value::String("performance".to_string()),
             ]),
         )
-        .build()?
-        .into_query();
+        .build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -812,14 +776,12 @@ async fn test_geo_distance_query() -> Result<()> {
             .distance("1000km".to_string())
             .point(GeoPointField::new("location", 40.7128, -74.0060))
             .build()?
-            .into_query()])
-        .build()?
-        .into_query();
+            .into()])
+        .build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -848,14 +810,12 @@ async fn test_geo_bounding_box_query() -> Result<()> {
                     .build()?,
             )
             .build()?
-            .into_query()])
-        .build()?
-        .into_query();
+            .into()])
+        .build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -886,14 +846,12 @@ async fn test_geo_shape_query() -> Result<()> {
                     .build()?,
             )
             .build()?
-            .into_query()])
-        .build()?
-        .into_query();
+            .into()])
+        .build()?;
 
     let response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .build()?
         .send()
@@ -913,12 +871,11 @@ async fn test_scroll() -> Result<()> {
     let index = fixture.namespaced_index(index_name);
 
     // First search with scroll parameter
-    let query = MatchAllQuery::builder().build()?.into_query();
+    let query = MatchAllQuery::builder().build()?;
 
     let search_response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .size(2) // Small size to ensure we have multiple pages
         .scroll("1m")
@@ -956,12 +913,11 @@ async fn test_clear_scroll() -> Result<()> {
     let index = fixture.namespaced_index(index_name);
 
     // First search with scroll parameter
-    let query = MatchAllQuery::builder().build()?.into_query();
+    let query = MatchAllQuery::builder().build()?;
 
     let search_response = fixture
         .client
-        .search::<common::TestDocument>()
-        .index(index)
+        .search::<common::TestDocument>(index)
         .query(query)
         .scroll("1m")
         .build()?
@@ -1000,16 +956,14 @@ async fn test_msearch() -> Result<()> {
             "tags".to_string(),
             MatchQueryRule::Simple("tutorial".to_string()),
         )
-        .build()?
-        .into_query();
+        .build()?;
 
     let term_query = TermQuery::builder()
         .field(
             "published".to_string(),
             TermQueryRule::value(serde_json::Value::Bool(true)),
         )
-        .build()?
-        .into_query();
+        .build()?;
 
     // Create MSearch items
     let item1 = MSearchItem {

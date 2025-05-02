@@ -1,6 +1,7 @@
 //! Query-related data types for OpenSearch
 
 use crate::types::common::GeoPoint;
+use crate::{impl_from_query_type, Error};
 use derive_builder::Builder;
 use derive_more::From;
 use serde::{Deserialize, Serialize};
@@ -23,8 +24,7 @@ use std::collections::HashMap;
 ///         MatchQueryRule::simple("value")
 ///     )
 ///     .build()
-///     .unwrap()
-///     .into_query();
+///     .unwrap();
 /// ```
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, From)]
@@ -32,6 +32,8 @@ use std::collections::HashMap;
 pub enum Query {
     /// Match query for full-text search
     Match(MatchQuery),
+    /// Match boolean prefix query for full-text with prefix matching
+    MatchBoolPrefix(MatchBoolPrefixQuery),
     /// Term query for exact matching
     Term(TermQuery),
     /// Range query for range comparisons
@@ -72,6 +74,133 @@ pub enum Query {
     Generic(HashMap<String, serde_json::Value>),
 }
 
+// Generate From<QueryType> for Query and From<QueryType> for Box<Query> implementations
+impl_from_query_type!(
+    MatchQuery,
+    MatchBoolPrefixQuery,
+    TermQuery,
+    RangeQuery,
+    BoolQuery,
+    ExistsQuery,
+    QueryStringQuery,
+    WildcardQuery,
+    PrefixQuery,
+    MatchAllQuery,
+    MatchNoneQuery,
+    MatchPhraseQuery,
+    MatchPhrasePrefixQuery,
+    MultiMatchQuery,
+    IdsQuery,
+    FuzzyQuery,
+    RegexpQuery,
+    TermsQuery,
+    TermsSetQuery,
+    NestedQuery,
+    HasChildQuery,
+    HasParentQuery,
+    ParentIdQuery,
+    ScriptQuery,
+    MoreLikeThisQuery,
+    GeoDistanceQuery,
+    GeoBoundingBoxQuery,
+    GeoPolygonQuery,
+    GeoShapeQuery
+);
+
+impl Query {
+    pub fn match_() -> MatchQueryBuilder {
+        MatchQuery::builder()
+    }
+
+    pub fn match_bool_prefix() -> MatchBoolPrefixQueryBuilder {
+        MatchBoolPrefixQuery::builder()
+    }
+
+    pub fn term() -> TermQueryBuilder {
+        TermQuery::builder()
+    }
+
+    pub fn range() -> RangeQueryBuilder {
+        RangeQuery::builder()
+    }
+
+    pub fn bool() -> BoolQueryRuleBuilder {
+        BoolQuery::builder()
+    }
+
+    pub fn exists() -> ExistsQueryRuleBuilder {
+        ExistsQuery::builder()
+    }
+
+    pub fn query_string() -> QueryStringQueryRuleBuilder {
+        QueryStringQuery::builder()
+    }
+
+    pub fn wildcard() -> WildcardQueryBuilder {
+        WildcardQuery::builder()
+    }
+
+    pub fn prefix() -> PrefixQueryBuilder {
+        PrefixQuery::builder()
+    }
+
+    pub fn match_all() -> MatchAllQuery {
+        MatchAllQuery::simple()
+    }
+
+    pub fn match_none() -> MatchNoneQuery {
+        MatchNoneQuery::simple()
+    }
+
+    pub fn match_phrase() -> MatchPhraseQueryBuilder {
+        MatchPhraseQuery::builder()
+    }
+
+    pub fn match_phrase_prefix() -> MatchPhrasePrefixQueryBuilder {
+        MatchPhrasePrefixQuery::builder()
+    }
+
+    pub fn multi_match() -> MultiMatchQueryRuleBuilder {
+        MultiMatchQuery::builder()
+    }
+
+    pub fn ids() -> IdsQueryRuleBuilder {
+        IdsQuery::builder()
+    }
+
+    pub fn fuzzy() -> FuzzyQueryBuilder {
+        FuzzyQuery::builder()
+    }
+
+    pub fn regexp() -> RegexpQueryBuilder {
+        RegexpQuery::builder()
+    }
+
+    pub fn terms() -> TermsQueryBuilder {
+        TermsQuery::builder()
+    }
+
+    pub fn terms_set() -> TermsSetQueryBuilder {
+        TermsSetQuery::builder()
+    }
+
+    pub fn nested() -> NestedQueryRuleBuilder {
+        NestedQuery::builder()
+    }
+
+    pub fn geo_distance() -> GeoDistanceQueryRuleBuilder {
+        GeoDistanceQuery::builder()
+    }
+
+    pub fn geo_bounding_box() -> GeoBoundingBoxQueryBuilder {
+        GeoBoundingBoxQuery::builder()
+    }
+
+    pub fn geo_polygon() -> GeoPolygonQueryBuilder {
+        GeoPolygonQuery::builder()
+    }
+}
+
 impl Default for Query {
     fn default() -> Self {
         Self::MatchAll(MatchAllQuery::simple())
@@ -86,7 +215,11 @@ impl Query {
 
 /// Match all query to match all documents
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct MatchAllQuery {
     pub match_all: MatchAllQueryRule,
 }
@@ -94,10 +227,6 @@ pub struct MatchAllQuery {
 impl MatchAllQuery {
     pub fn builder() -> MatchAllQueryRuleBuilder {
         MatchAllQueryRuleBuilder::default()
-    }
-
-    pub fn into_query(self) -> Query {
-        Query::MatchAll(self)
     }
 
     pub fn simple() -> Self {
@@ -110,8 +239,11 @@ impl MatchAllQuery {
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
-#[builder(build_fn(name = "build_rule"))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(name = "build_rule", error = "crate::Error")
+)]
 pub struct MatchAllQueryRule {
     /// Optional boost value
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -120,7 +252,7 @@ pub struct MatchAllQueryRule {
 }
 
 impl MatchAllQueryRuleBuilder {
-    pub fn build(&self) -> Result<MatchAllQuery, MatchAllQueryRuleBuilderError> {
+    pub fn build(&self) -> Result<MatchAllQuery, Error> {
         Ok(MatchAllQuery {
             match_all: self.build_rule()?,
         })
@@ -129,7 +261,11 @@ impl MatchAllQueryRuleBuilder {
 
 /// Match none query to match no documents
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct MatchNoneQuery {
     pub match_none: MatchNoneQueryRule,
 }
@@ -137,10 +273,6 @@ pub struct MatchNoneQuery {
 impl MatchNoneQuery {
     pub fn builder() -> MatchNoneQueryRuleBuilder {
         MatchNoneQueryRuleBuilder::default()
-    }
-
-    pub fn into_query(self) -> Query {
-        Query::MatchNone(self)
     }
 
     pub fn simple() -> Self {
@@ -153,12 +285,15 @@ impl MatchNoneQuery {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder, Default)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
-#[builder(build_fn(name = "build_rule"))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(name = "build_rule", error = "crate::Error")
+)]
 pub struct MatchNoneQueryRule {}
 
 impl MatchNoneQueryRuleBuilder {
-    pub fn build(&self) -> Result<MatchNoneQuery, MatchNoneQueryRuleBuilderError> {
+    pub fn build(&self) -> Result<MatchNoneQuery, Error> {
         Ok(MatchNoneQuery {
             match_none: self.build_rule()?,
         })
@@ -167,7 +302,11 @@ impl MatchNoneQueryRuleBuilder {
 
 /// Match query for full-text search
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct MatchQuery {
     /// Field to query
     #[serde(rename = "match")]
@@ -179,10 +318,6 @@ impl MatchQuery {
     /// Create a new builder for MatchQuery
     pub fn builder() -> MatchQueryBuilder {
         MatchQueryBuilder::default()
-    }
-
-    pub fn into_query(self) -> Query {
-        Query::Match(self)
     }
 }
 
@@ -218,9 +353,25 @@ impl MatchQueryRule {
     }
 }
 
+impl From<&str> for MatchQueryRule {
+    fn from(s: &str) -> Self {
+        Self::Simple(s.to_string())
+    }
+}
+
+impl From<&String> for MatchQueryRule {
+    fn from(s: &String) -> Self {
+        Self::Simple(s.clone())
+    }
+}
+
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct MatchQueryRuleAdvanced {
     /// Query text
     pub query: String,
@@ -291,7 +442,11 @@ pub enum ZeroTermsQuery {
 
 /// Term query for exact matching
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct TermQuery {
     /// Field to query
     #[serde(rename = "term")]
@@ -302,10 +457,6 @@ impl TermQuery {
     /// Create a new builder for TermQuery
     pub fn builder() -> TermQueryBuilder {
         TermQueryBuilder::default()
-    }
-
-    pub fn into_query(self) -> Query {
-        Query::Term(self)
     }
 }
 
@@ -324,7 +475,11 @@ impl TermQueryBuilder {
 
 /// Parameters for term query
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct TermQueryRule {
     /// Terms to match
     pub value: serde_json::Value,
@@ -351,9 +506,22 @@ impl TermQueryRule {
     }
 }
 
+impl<T> From<T> for TermQueryRule
+where
+    T: Into<serde_json::Value>,
+{
+    fn from(value: T) -> Self {
+        Self::value(value)
+    }
+}
+
 /// Range query for range comparisons
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct RangeQuery {
     #[builder(default)]
     pub range: HashMap<String, RangeQueryRule>,
@@ -363,10 +531,6 @@ impl RangeQuery {
     /// Create a new builder for RangeQuery
     pub fn builder() -> RangeQueryBuilder {
         RangeQueryBuilder::default()
-    }
-
-    pub fn into_query(self) -> Query {
-        Query::Range(self)
     }
 }
 
@@ -385,7 +549,11 @@ impl RangeQueryBuilder {
 
 /// Parameters for range query
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct RangeQueryRule {
     /// Greater than
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -468,7 +636,11 @@ pub enum RangeRelation {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct BoolQuery {
     pub(crate) bool: BoolQueryRule,
 }
@@ -478,16 +650,15 @@ impl BoolQuery {
     pub fn builder() -> BoolQueryRuleBuilder {
         BoolQueryRuleBuilder::default()
     }
-
-    pub fn into_query(self) -> Query {
-        Query::Bool(self)
-    }
 }
 
 /// Boolean query for combining queries
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
-#[builder(build_fn(name = "build_rule"))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(name = "build_rule", error = "crate::Error")
+)]
 pub struct BoolQueryRule {
     /// Queries that must match (AND)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -519,16 +690,30 @@ pub struct BoolQueryRule {
 }
 
 impl BoolQueryRuleBuilder {
-    pub fn build(&self) -> Result<BoolQuery, BoolQueryRuleBuilderError> {
+    pub fn build(&self) -> Result<BoolQuery, Error> {
         Ok(BoolQuery {
             bool: self.build_rule()?,
         })
+    }
+
+    pub fn add_must(&mut self, query: impl Into<Query>) -> &mut Self {
+        self.must.get_or_insert_default().get_or_insert_default().push(query.into());
+        self
+    }
+
+    pub fn add_must_not(&mut self, query: impl Into<Query>) -> &mut Self {
+        self.must_not.get_or_insert_default().get_or_insert_default().push(query.into());
+        self
     }
 }
 
 /// Exists query to check if a field exists
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct ExistsQuery {
     pub exists: ExistsQueryRule,
 }
@@ -538,15 +723,14 @@ impl ExistsQuery {
     pub fn builder() -> ExistsQueryRuleBuilder {
         ExistsQueryRuleBuilder::default()
     }
-
-    pub fn into_query(self) -> Query {
-        Query::Exists(self)
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
-#[builder(build_fn(name = "build_params"))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(name = "build_rule", error = "crate::Error")
+)]
 pub struct ExistsQueryRule {
     /// Field to check
     pub field: String,
@@ -557,16 +741,20 @@ pub struct ExistsQueryRule {
 }
 
 impl ExistsQueryRuleBuilder {
-    pub fn build(&self) -> Result<ExistsQuery, ExistsQueryRuleBuilderError> {
+    pub fn build(&self) -> Result<ExistsQuery, Error> {
         Ok(ExistsQuery {
-            exists: self.build_params()?,
+            exists: self.build_rule()?,
         })
     }
 }
 
 /// Query string query with advanced query syntax
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct QueryStringQuery {
     pub query_string: QueryStringQueryRule,
 }
@@ -576,15 +764,14 @@ impl QueryStringQuery {
     pub fn builder() -> QueryStringQueryRuleBuilder {
         QueryStringQueryRuleBuilder::default()
     }
-
-    pub fn into_query(self) -> Query {
-        Query::QueryString(self)
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
-#[builder(build_fn(name = "build_params"))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(name = "build_rule", error = "crate::Error")
+)]
 pub struct QueryStringQueryRule {
     /// Query string
     pub query: String,
@@ -695,9 +882,9 @@ pub struct QueryStringQueryRule {
 }
 
 impl QueryStringQueryRuleBuilder {
-    pub fn build(&self) -> Result<QueryStringQuery, QueryStringQueryRuleBuilderError> {
+    pub fn build(&self) -> Result<QueryStringQuery, Error> {
         Ok(QueryStringQuery {
-            query_string: self.build_params()?,
+            query_string: self.build_rule()?,
         })
     }
 }
@@ -722,7 +909,11 @@ pub enum QueryStringType {
 
 /// Match phrase query
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct MatchPhraseQuery {
     #[serde(rename = "match_phrase")]
     pub match_phrase: HashMap<String, MatchPhraseQueryRule>,
@@ -732,10 +923,6 @@ impl MatchPhraseQuery {
     /// Create a new builder for MatchPhraseQuery
     pub fn builder() -> MatchPhraseQueryBuilder {
         MatchPhraseQueryBuilder::default()
-    }
-
-    pub fn into_query(self) -> Query {
-        Query::MatchPhrase(self)
     }
 }
 
@@ -771,9 +958,25 @@ impl MatchPhraseQueryRule {
     }
 }
 
+impl From<&str> for MatchPhraseQueryRule {
+    fn from(s: &str) -> Self {
+        Self::Simple(s.to_string())
+    }
+}
+
+impl From<&String> for MatchPhraseQueryRule {
+    fn from(s: &String) -> Self {
+        Self::Simple(s.clone())
+    }
+}
+
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct MatchPhraseQueryRuleAdvanced {
     /// Query text to match
     query: String,
@@ -796,7 +999,11 @@ impl MatchPhraseQueryRuleAdvanced {
 
 /// Match phrase prefix query
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct MatchPhrasePrefixQuery {
     #[serde(rename = "match_phrase_prefix")]
     pub match_phrase_prefix: HashMap<String, MatchPhrasePrefixQueryRule>,
@@ -806,10 +1013,6 @@ impl MatchPhrasePrefixQuery {
     /// Create a new builder for MatchPhrasePrefixQuery
     pub fn builder() -> MatchPhrasePrefixQueryBuilder {
         MatchPhrasePrefixQueryBuilder::default()
-    }
-
-    pub fn into_query(self) -> Query {
-        Query::MatchPhrasePrefix(self)
     }
 }
 
@@ -845,9 +1048,25 @@ impl MatchPhrasePrefixQueryRule {
     }
 }
 
+impl From<&str> for MatchPhrasePrefixQueryRule {
+    fn from(s: &str) -> Self {
+        Self::Simple(s.to_string())
+    }
+}
+
+impl From<&String> for MatchPhrasePrefixQueryRule {
+    fn from(s: &String) -> Self {
+        Self::Simple(s.clone())
+    }
+}
+
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct MatchPhrasePrefixQueryRuleAdvanced {
     /// Query text to match
     query: String,
@@ -874,7 +1093,11 @@ impl MatchPhrasePrefixQueryRuleAdvanced {
 
 /// Multi-match query
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct MultiMatchQuery {
     #[serde(rename = "multi_match")]
     pub multi_match: MultiMatchQueryRule,
@@ -885,16 +1108,15 @@ impl MultiMatchQuery {
     pub fn builder() -> MultiMatchQueryRuleBuilder {
         MultiMatchQueryRuleBuilder::default()
     }
-
-    pub fn into_query(self) -> Query {
-        Query::MultiMatch(self)
-    }
 }
 
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
-#[builder(build_fn(name = "build_rule"))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(name = "build_rule", error = "crate::Error")
+)]
 pub struct MultiMatchQueryRule {
     /// Query text to match
     query: String,
@@ -950,7 +1172,7 @@ pub struct MultiMatchQueryRule {
 }
 
 impl MultiMatchQueryRuleBuilder {
-    pub fn build(&self) -> Result<MultiMatchQuery, MultiMatchQueryRuleBuilderError> {
+    pub fn build(&self) -> Result<MultiMatchQuery, Error> {
         Ok(MultiMatchQuery {
             multi_match: self.build_rule()?,
         })
@@ -959,7 +1181,11 @@ impl MultiMatchQueryRuleBuilder {
 
 /// IDs query
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct IdsQuery {
     pub ids: IdsQueryRule,
 }
@@ -969,16 +1195,15 @@ impl IdsQuery {
     pub fn builder() -> IdsQueryRuleBuilder {
         IdsQueryRuleBuilder::default()
     }
-
-    pub fn into_query(self) -> Query {
-        Query::Ids(self)
-    }
 }
 
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
-#[builder(build_fn(name = "build_rule"))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(name = "build_rule", error = "crate::Error")
+)]
 pub struct IdsQueryRule {
     /// List of document IDs to match
     #[builder(default)]
@@ -995,7 +1220,7 @@ impl IdsQueryRule {
 }
 
 impl IdsQueryRuleBuilder {
-    pub fn build(&self) -> Result<IdsQuery, IdsQueryRuleBuilderError> {
+    pub fn build(&self) -> Result<IdsQuery, Error> {
         Ok(IdsQuery {
             ids: self.build_rule()?,
         })
@@ -1004,7 +1229,11 @@ impl IdsQueryRuleBuilder {
 
 /// Fuzzy query
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct FuzzyQuery {
     pub fuzzy: HashMap<String, FuzzyQueryRule>,
 }
@@ -1013,10 +1242,6 @@ impl FuzzyQuery {
     /// Create a new builder for FuzzyQuery
     pub fn builder() -> FuzzyQueryBuilder {
         FuzzyQueryBuilder::default()
-    }
-
-    pub fn into_query(self) -> Query {
-        Query::Fuzzy(self)
     }
 }
 
@@ -1035,7 +1260,11 @@ impl FuzzyQueryBuilder {
 
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct FuzzyQueryRule {
     /// Value to match
     value: String,
@@ -1069,7 +1298,11 @@ impl FuzzyQueryRule {
 
 /// Regular expression query
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct RegexpQuery {
     #[serde(rename = "regexp")]
     pub regexp: HashMap<String, RegexpQueryRule>,
@@ -1079,10 +1312,6 @@ impl RegexpQuery {
     /// Create a new builder for RegexpQuery
     pub fn builder() -> RegexpQueryBuilder {
         RegexpQueryBuilder::default()
-    }
-
-    pub fn into_query(self) -> Query {
-        Query::Regexp(self)
     }
 }
 
@@ -1118,9 +1347,25 @@ impl RegexpQueryRule {
     }
 }
 
+impl From<&str> for RegexpQueryRule {
+    fn from(s: &str) -> Self {
+        Self::Simple(s.to_string())
+    }
+}
+
+impl From<&String> for RegexpQueryRule {
+    fn from(s: &String) -> Self {
+        Self::Simple(s.clone())
+    }
+}
+
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct RegexpQueryRuleAdvanced {
     /// Value to match
     value: String,
@@ -1145,7 +1390,11 @@ pub struct RegexpQueryRuleAdvanced {
 
 /// Terms query
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct TermsQuery {
     pub terms: HashMap<String, TermsQueryRule>,
 }
@@ -1153,10 +1402,6 @@ pub struct TermsQuery {
 impl TermsQuery {
     pub fn builder() -> TermsQueryBuilder {
         TermsQueryBuilder::default()
-    }
-
-    pub fn into_query(self) -> Query {
-        Query::Terms(self)
     }
 }
 
@@ -1193,7 +1438,11 @@ impl TermsQueryRule {
 
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct TermsQueryRuleAdvanced {
     /// Terms to match
     pub values: Vec<serde_json::Value>,
@@ -1214,7 +1463,11 @@ impl TermsQueryRuleAdvanced {
 
 /// Terms set query
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct TermsSetQuery {
     #[serde(rename = "terms_set")]
     pub terms_set: HashMap<String, TermsSetQueryRule>,
@@ -1223,10 +1476,6 @@ pub struct TermsSetQuery {
 impl TermsSetQuery {
     pub fn builder() -> TermsSetQueryBuilder {
         TermsSetQueryBuilder::default()
-    }
-
-    pub fn into_query(self) -> Query {
-        Query::TermsSet(self)
     }
 }
 
@@ -1243,7 +1492,11 @@ impl TermsSetQueryBuilder {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct TermsSetQueryRule {
     /// Terms to match
     pub terms: Vec<String>,
@@ -1273,7 +1526,11 @@ pub struct TermsSetQueryRule {
 
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "owned", setter(into, strip_option))]
+#[builder(
+    pattern = "owned",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct GeoDistanceQuery {
     pub geo_distance: GeoDistanceQueryRule,
 }
@@ -1283,16 +1540,15 @@ impl GeoDistanceQuery {
     pub fn builder() -> GeoDistanceQueryRuleBuilder {
         GeoDistanceQueryRuleBuilder::default()
     }
-
-    pub fn into_query(self) -> Query {
-        Query::GeoDistance(self)
-    }
 }
 
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "owned", setter(into, strip_option))]
-#[builder(build_fn(name = "build_rule"))]
+#[builder(
+    pattern = "owned",
+    setter(into, strip_option),
+    build_fn(name = "build_rule", error = "crate::Error")
+)]
 pub struct GeoDistanceQueryRule {
     /// Distance value (e.g., "10km")
     pub distance: String,
@@ -1325,7 +1581,7 @@ impl GeoDistanceQueryRuleBuilder {
         self
     }
 
-    pub fn build(self) -> Result<GeoDistanceQuery, GeoDistanceQueryRuleBuilderError> {
+    pub fn build(self) -> Result<GeoDistanceQuery, Error> {
         Ok(GeoDistanceQuery {
             geo_distance: self.build_rule()?,
         })
@@ -1357,7 +1613,11 @@ pub enum GeoValidationMethod {
 /// Geo shape query
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct GeoShapeQuery {
     /// Field to query
     pub geo_shape: HashMap<String, GeoShapeQueryRule>,
@@ -1367,10 +1627,6 @@ impl GeoShapeQuery {
     /// Create a new builder for GeoShapeQuery
     pub fn builder() -> GeoShapeQueryBuilder {
         GeoShapeQueryBuilder::default()
-    }
-
-    pub fn into_query(self) -> Query {
-        Query::GeoShape(self)
     }
 }
 
@@ -1390,7 +1646,11 @@ impl GeoShapeQueryBuilder {
 /// Parameters for geo_shape query
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct GeoShapeQueryRule {
     /// Shape to query
     pub shape: GeoShape,
@@ -1434,27 +1694,173 @@ pub enum GeoShapeRelation {
 }
 
 /// Nested query
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct NestedQuery {
-    pub nested: NestedQueryParams,
+    pub nested: NestedQueryRule,
+}
+
+impl NestedQuery {
+    /// Create a new builder for NestedQuery
+    pub fn builder() -> NestedQueryRuleBuilder {
+        NestedQueryRuleBuilder::default()
+    }
+}
+
+/// Match boolean prefix query
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
+pub struct MatchBoolPrefixQuery {
+    #[serde(rename = "match_bool_prefix")]
+    pub match_bool_prefix: HashMap<String, MatchBoolPrefixQueryRule>,
+}
+
+impl MatchBoolPrefixQuery {
+    /// Create a new builder for MatchBoolPrefixQuery
+    pub fn builder() -> MatchBoolPrefixQueryBuilder {
+        MatchBoolPrefixQueryBuilder::default()
+    }
+
+    pub fn simple_rule(value: impl Into<String>) -> MatchBoolPrefixQueryRule {
+        MatchBoolPrefixQueryRule::Simple(value.into())
+    }
+
+    pub fn advanced_rule() -> MatchBoolPrefixQueryRuleAdvancedBuilder {
+        MatchBoolPrefixQueryRuleAdvancedBuilder::default()
+    }
+}
+
+/// Rule for match bool prefix query
+#[serde_with::serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum MatchBoolPrefixQueryRule {
+    /// Simple query with just a query string
+    Simple(String),
+    /// Advanced query with additional parameters
+    Advanced(MatchBoolPrefixQueryRuleAdvanced),
+}
+
+impl MatchBoolPrefixQueryRule {
+    /// Create a simple query rule with just a query string
+    pub fn simple(query: impl Into<String>) -> Self {
+        MatchBoolPrefixQueryRule::Simple(query.into())
+    }
+
+    /// Create an advanced query rule with additional parameters
+    pub fn advanced() -> MatchBoolPrefixQueryRuleAdvancedBuilder {
+        MatchBoolPrefixQueryRuleAdvancedBuilder::default()
+    }
+}
+
+impl From<&str> for MatchBoolPrefixQueryRule {
+    fn from(s: &str) -> Self {
+        Self::Simple(s.to_string())
+    }
+}
+
+impl From<&String> for MatchBoolPrefixQueryRule {
+    fn from(s: &String) -> Self {
+        Self::Simple(s.clone())
+    }
+}
+
+/// Advanced parameters for match bool prefix query
+#[serde_with::skip_serializing_none]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
+#[builder(pattern = "mutable", setter(into, strip_option), default)]
+pub struct MatchBoolPrefixQueryRuleAdvanced {
+    /// Query string to match
+    pub query: String,
+    /// Analyzer to use for the query
+    pub analyzer: Option<String>,
+    /// Minimum number of terms that must match
+    pub minimum_should_match: Option<String>,
+    /// Boost factor for the query
+    pub boost: Option<f32>,
+    /// How the query is rewritten
+    pub operator: Option<String>,
+    /// Whether to ignore the case of query and field values
+    pub fuzzy_transpositions: Option<bool>,
+    /// Maximum edit distance for fuzzy matching
+    pub max_expansions: Option<u32>,
+    /// Whether to include terms outside the offsets
+    pub prefix_length: Option<u32>,
+    /// Whether to generate slop-based fuzzy matching
+    pub auto_generate_synonyms_phrase_query: Option<bool>,
+    /// Fuzzy rewrite method
+    pub fuzzy_rewrite: Option<String>,
+    /// Whether to disable query coordination
+    pub zero_terms_query: Option<String>,
+}
+
+impl MatchBoolPrefixQueryBuilder {
+    /// Add a field to the query
+    pub fn field(
+        &mut self,
+        field: impl Into<String>,
+        rule: impl Into<MatchBoolPrefixQueryRule>,
+    ) -> &mut Self {
+        let field_str = field.into();
+        let rule_val = rule.into();
+
+        if self.match_bool_prefix.is_none() {
+            self.match_bool_prefix = Some(HashMap::new());
+        }
+
+        if let Some(map) = self.match_bool_prefix.as_mut() {
+            map.insert(field_str, rule_val);
+        }
+
+        self
+    }
+}
+
+impl From<MatchBoolPrefixQueryRuleAdvanced> for MatchBoolPrefixQueryRule {
+    fn from(advanced: MatchBoolPrefixQueryRuleAdvanced) -> Self {
+        MatchBoolPrefixQueryRule::Advanced(advanced)
+    }
 }
 
 /// Parameters for nested query
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct NestedQueryParams {
+#[serde_with::skip_serializing_none]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(name = "build_rule", error = "crate::Error")
+)]
+pub struct NestedQueryRule {
     /// Path to the nested field
     pub path: String,
     /// Query to execute on the nested field
     pub query: Box<Query>,
     /// How scores are calculated
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default)]
     pub score_mode: Option<NestedScoreMode>,
     /// Whether to consider unmapped paths as matching
-    #[serde(rename = "ignore_unmapped", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "ignore_unmapped")]
+    #[builder(default)]
     pub ignore_unmapped: Option<bool>,
     /// Boost factor for this query
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[builder(default)]
     pub boost: Option<f64>,
+}
+
+impl NestedQueryRuleBuilder {
+    pub fn build(&self) -> Result<NestedQuery, Error> {
+        Ok(NestedQuery {
+            nested: self.build_rule()?,
+        })
+    }
 }
 
 /// Nested score mode
@@ -1665,7 +2071,11 @@ pub enum MoreLikeThisLike {
 
 /// Wildcard query for pattern matching
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct WildcardQuery {
     pub wildcard: HashMap<String, WildcardQueryRule>,
 }
@@ -1674,10 +2084,6 @@ impl WildcardQuery {
     /// Create a new builder for WildcardQuery
     pub fn builder() -> WildcardQueryBuilder {
         WildcardQueryBuilder::default()
-    }
-
-    pub fn into_query(self) -> Query {
-        Query::Wildcard(self)
     }
 }
 
@@ -1713,9 +2119,25 @@ impl WildcardQueryRule {
     }
 }
 
+impl From<&str> for WildcardQueryRule {
+    fn from(s: &str) -> Self {
+        Self::Simple(s.to_string())
+    }
+}
+
+impl From<&String> for WildcardQueryRule {
+    fn from(s: &String) -> Self {
+        Self::Simple(s.clone())
+    }
+}
+
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct WildcardQueryRuleAdvanced {
     /// Wildcard pattern
     value: String,
@@ -1739,7 +2161,11 @@ impl WildcardQueryRuleAdvanced {
 
 /// Prefix query for prefix matching
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct PrefixQuery {
     /// Field to query
     #[serde(rename = "prefix")]
@@ -1750,10 +2176,6 @@ impl PrefixQuery {
     /// Create a new builder for PrefixQuery
     pub fn builder() -> PrefixQueryBuilder {
         PrefixQueryBuilder::default()
-    }
-
-    pub fn into_query(self) -> Query {
-        Query::Prefix(self)
     }
 }
 
@@ -1789,9 +2211,25 @@ impl PrefixQueryRule {
     }
 }
 
+impl From<&str> for PrefixQueryRule {
+    fn from(s: &str) -> Self {
+        Self::Simple(s.to_string())
+    }
+}
+
+impl From<&String> for PrefixQueryRule {
+    fn from(s: &String) -> Self {
+        Self::Simple(s.clone())
+    }
+}
+
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "mutable", setter(into, strip_option))]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct PrefixQueryRuleAdvanced {
     /// Prefix value
     value: String,
@@ -1842,10 +2280,6 @@ impl GeoBoundingBoxQuery {
     /// Create a new builder for GeoDistanceQuery
     pub fn builder() -> GeoBoundingBoxQueryBuilder {
         GeoBoundingBoxQueryBuilder::default()
-    }
-
-    pub fn into_query(self) -> Query {
-        Query::GeoBoundingBox(self)
     }
 }
 
@@ -1904,7 +2338,11 @@ impl GeoBoundingBoxQueryRule {
 /// Geo polygon query
 #[serde_with::skip_serializing_none]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
-#[builder(pattern = "owned", setter(into, strip_option))]
+#[builder(
+    pattern = "owned",
+    setter(into, strip_option),
+    build_fn(error = "crate::Error")
+)]
 pub struct GeoPolygonQuery {
     /// List of points that form the polygon
     pub points: Vec<GeoPoint>,
@@ -1926,10 +2364,6 @@ impl GeoPolygonQuery {
     /// Create a new builder for GeoDistanceQuery
     pub fn builder() -> GeoPolygonQueryBuilder {
         GeoPolygonQueryBuilder::default()
-    }
-
-    pub fn into_query(self) -> Query {
-        Query::GeoPolygon(self)
     }
 }
 
@@ -2162,6 +2596,292 @@ impl GeoPointField {
             field: field.into(),
             lat,
             lon,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Error;
+    use serde_json::Value;
+
+    /// Helper function to test serialization and deserialization roundtrip
+    fn test_serde_roundtrip<T>(value: &T, expected_json: &str) -> Result<(), Error>
+    where
+        T: serde::Serialize + serde::de::DeserializeOwned + std::fmt::Debug + PartialEq,
+    {
+        // Serialize to string
+        let serialized = serde_json::to_string(&value)?;
+
+        // Parse both as Value for comparison that ignores formatting/whitespace
+        let value_json: Value = serde_json::from_str(&serialized)?;
+        let expected_value: Value = serde_json::from_str(expected_json)?;
+
+        assert_eq!(
+            value_json, expected_value,
+            "Serialized JSON doesn't match expected JSON"
+        );
+
+        // Deserialize back
+        let deserialized: T = serde_json::from_str(&serialized)?;
+
+        // Verify roundtrip
+        assert_eq!(
+            &deserialized, value,
+            "Deserialized value doesn't match original"
+        );
+
+        Ok(())
+    }
+
+    #[cfg(test)]
+    mod query_tests {
+        use super::*;
+        use crate::types::query::*;
+        use serde_json::json;
+
+        #[test]
+        fn test_match_query_simple() -> Result<(), Error> {
+            let query = MatchQuery {
+                match_: vec![(
+                    "title".to_string(),
+                    MatchQueryRule::Simple("opensearch".to_string()),
+                )]
+                .into_iter()
+                .collect(),
+            };
+
+            let expected_json = r#"{"match":{"title":"opensearch"}}"#;
+            test_serde_roundtrip(&query, expected_json)
+        }
+
+        #[test]
+        fn test_match_query_complete() -> Result<(), Error> {
+            let query = MatchQuery {
+                match_: vec![(
+                    "title".to_string(),
+                    MatchQueryRule::Advanced(MatchQueryRuleAdvanced {
+                        query: "opensearch".to_string(),
+                        operator: Some(Operator::And),
+                        analyzer: Some("standard".to_string()),
+                        minimum_should_match: None,
+                        fuzziness: Some(Fuzziness::Auto),
+                        prefix_length: Some(2),
+                        max_expansions: Some(50),
+                        boost: Some(1.5),
+                        auto_generate_synonyms_phrase_query: None,
+                        enable_position_increments: None,
+                        fuzzy_rewrite: None,
+                        fuzzy_transpositions: None,
+                        lenient: None,
+                        zero_terms_query: None,
+                    }),
+                )]
+                .into_iter()
+                .collect(),
+            };
+
+            let expected_json = r#"{
+                    "match": {
+                        "title": {
+                            "query": "opensearch",
+                            "operator": "and",
+                            "fuzziness": "auto",
+                            "prefix_length": 2,
+                            "max_expansions": 50,
+                            "boost": 1.5,
+                            "analyzer": "standard"
+                        }
+                    }
+                }"#;
+            test_serde_roundtrip(&query, expected_json)
+        }
+
+        #[test]
+        fn test_term_query_simple() -> Result<(), Error> {
+            let query = TermQuery {
+                term: vec![(
+                    "status".to_string(),
+                    TermQueryRule {
+                        value: json!("active"),
+                        case_insensitive: None,
+                        boost: None,
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            };
+
+            let expected_json = r#"{"term": {"status": {"value": "active"}}}"#;
+            test_serde_roundtrip(&query, expected_json)
+        }
+
+        #[test]
+        fn test_term_query_complete() -> Result<(), Error> {
+            let query = TermQuery {
+                term: vec![(
+                    "status".to_string(),
+                    TermQueryRule {
+                        value: json!("active"),
+                        boost: Some(2.0),
+                        case_insensitive: Some(true),
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            };
+
+            let expected_json = r#"{
+                "term": {
+                    "status": {
+                        "value": "active",
+                        "boost": 2.0,
+                        "case_insensitive": true
+                    }
+                }
+            }"#;
+            test_serde_roundtrip(&query, expected_json)
+        }
+
+        #[test]
+        fn test_range_query() -> Result<(), Error> {
+            let query = RangeQuery {
+                range: vec![(
+                    "age".to_string(),
+                    RangeQueryRule {
+                        gt: None,
+                        gte: Some(json!(25)),
+                        lt: Some(json!(50)),
+                        format: None,
+                        relation: None,
+                        time_zone: None,
+                        boost: Some(1.2),
+                        lte: None,
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            };
+
+            let expected_json = r#"{
+                "range": {
+                    "age": {
+                        "gte": 25,
+                        "lt": 50,
+                        "boost": 1.2
+                    }
+                }
+            }"#;
+            test_serde_roundtrip(&query, expected_json)
+        }
+
+        #[test]
+        fn test_bool_query() -> Result<(), Error> {
+            let must_query = Query::Match(MatchQuery {
+                match_: vec![(
+                    "title".to_string(),
+                    MatchQueryRule::Simple("elasticsearch".to_string()),
+                )]
+                .into_iter()
+                .collect(),
+            });
+
+            let should_query = Query::Term(TermQuery {
+                term: vec![("status".to_string(), TermQueryRule::value("active"))]
+                    .into_iter()
+                    .collect(),
+            });
+
+            let bool_query = BoolQuery {
+                bool: BoolQueryRule {
+                    must: Some(vec![must_query]),
+                    should: Some(vec![should_query]),
+                    must_not: None,
+                    filter: None,
+                    minimum_should_match: None,
+                    boost: None,
+                },
+            };
+
+            let expected_json = r#"{
+                "bool": {
+                    "must": [
+                        {
+                            "match": {
+                                "title": "elasticsearch"
+                            }
+                        }
+                    ],
+                    "should": [
+                        {
+                            "term": {
+                                "status": {
+                                    "value": "active"
+                                }
+                            }
+                        }
+                    ]
+                }
+            }"#;
+            test_serde_roundtrip(&bool_query, expected_json)
+        }
+
+        #[test]
+        fn test_query_string_query() -> Result<(), Error> {
+            let query = QueryStringQuery {
+                query_string: QueryStringQueryRule {
+                    query: "opensearch and (server or cloud)".to_string(),
+                    default_field: Some("content".to_string()),
+                    default_operator: Some(Operator::And),
+                    analyzer: None,
+                    allow_leading_wildcard: None,
+                    enable_position_increments: None,
+                    fuzzy_max_expansions: None,
+                    fuzziness: None,
+                    fuzzy_prefix_length: None,
+                    lenient: None,
+                    max_determinized_states: None,
+                    minimum_should_match: None,
+                    phrase_slop: None,
+                    time_zone: None,
+                    boost: None,
+                    analyze_wildcard: None,
+                    fields: None,
+                    lowercase_expanded_terms: None,
+                    fuzzy_rewrite: None,
+                    auto_generate_phrase_queries: None,
+                    type_: None,
+                },
+            };
+
+            let expected_json = r#"{
+                "query_string": {
+                    "query": "opensearch and (server or cloud)",
+                    "default_field": "content",
+                    "default_operator": "and"
+                }
+            }"#;
+            test_serde_roundtrip(&query, expected_json)
+        }
+
+        #[test]
+        fn test_match_all_query() -> Result<(), Error> {
+            let query = MatchAllQuery {
+                match_all: MatchAllQueryRule { boost: Some(1.2) },
+            };
+
+            let expected_json = r#"{"match_all": {"boost":1.2}}"#;
+            test_serde_roundtrip(&query, expected_json)
+        }
+
+        #[test]
+        fn test_match_none_query() -> Result<(), Error> {
+            let query = MatchNoneQuery {
+                match_none: Default::default(),
+            };
+
+            let expected_json = r#"{"match_none": {}}"#;
+            test_serde_roundtrip(&query, expected_json)
         }
     }
 }

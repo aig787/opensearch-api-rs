@@ -1,10 +1,12 @@
 //! Search-related data types
 
+use crate::types::aggregations::AggregationResponse;
+use crate::types::common::ShardStatistics;
 use crate::types::query::Query;
 use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, KeyValueMap};
 use std::collections::HashMap;
-use crate::types::common::ShardStatistics;
 
 /// Response for a search operation
 #[serde_with::skip_serializing_none]
@@ -24,7 +26,7 @@ pub struct SearchResponse<T: Default = serde_json::Value> {
 
     /// Aggregation results (if aggregations were requested)
     #[serde(default)]
-    pub aggregations: Option<HashMap<String, Aggregation>>,
+    pub aggregations: Option<HashMap<String, AggregationResponse>>,
 
     /// Suggestion results (if suggestions were requested)
     #[serde(default)]
@@ -80,59 +82,6 @@ pub enum TotalHitsRelation {
     /// Total is less than or equal to the reported value
     #[serde(rename = "lte")]
     LessThanOrEqual,
-}
-
-/// Aggregation results
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
-pub enum Aggregation {
-    /// Bucket aggregation with sub-buckets
-    Buckets {
-        /// Doc count
-        #[serde(skip_serializing_if = "Option::is_none")]
-        doc_count_error_upper_bound: Option<i64>,
-
-        /// Sum of other doc counts
-        #[serde(skip_serializing_if = "Option::is_none")]
-        sum_other_doc_count: Option<i64>,
-
-        /// Buckets in the aggregation
-        buckets: Vec<Bucket>,
-    },
-
-    /// Single bucket aggregation
-    SingleBucket {
-        /// Doc count
-        doc_count: i64,
-
-        /// Sub-aggregations
-        #[serde(flatten)]
-        aggregations: HashMap<String, Aggregation>,
-    },
-
-    /// Metric aggregation result
-    Metric(serde_json::Value),
-
-    /// Other aggregation types
-    Other(serde_json::Value),
-}
-
-/// Bucket in a bucket aggregation
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Bucket {
-    /// Bucket key
-    pub key: serde_json::Value,
-
-    /// Bucket key as text (for some aggregations)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_as_string: Option<String>,
-
-    /// Document count in the bucket
-    pub doc_count: i64,
-
-    /// Sub-aggregations
-    #[serde(flatten)]
-    pub aggregations: HashMap<String, Aggregation>,
 }
 
 /// Highlighting options
@@ -311,77 +260,48 @@ pub struct SuggestionOption {
     pub collate_match: Option<bool>,
 }
 
-/// Sort specification for search results
+#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
-pub enum Sort {
-    /// Sort by field name with default order (ascending)
-    Field(String),
+pub struct SortTerm(#[serde_as(as = "KeyValueMap<_>")] pub Vec<SortEntry>);
 
-    /// Sort by field with specific order
-    FieldWithOrder {
-        /// Field name to sort by
-        #[serde(flatten)]
-        field: HashMap<String, SortOptions>,
-    },
-
-    /// Sort by script
-    Script(ScriptSort),
-
-    /// Sort by _score
-    Score { _score: SortOrder },
-
-    /// Sort by _doc (natural order)
-    Doc { _doc: SortOrder },
+impl<T> From<T> for SortTerm
+where
+    T: Into<SortEntry>,
+{
+    fn from(value: T) -> Self {
+        Self(vec![value.into()])
+    }
 }
 
-/// Script sort specification
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ScriptSort {
-    /// The script to execute for sorting
-    #[serde(rename = "_script")]
-    pub script: ScriptSortOptions,
+pub struct SortEntry {
+    #[serde(rename = "$key$")]
+    pub field: String,
+    #[serde(flatten)]
+    pub options: SortOptions,
 }
 
-/// Script sort options
-#[serde_with::skip_serializing_none]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ScriptSortOptions {
-    /// Script to execute
-    pub script: crate::types::script::Script,
-
-    /// Type of the sort values produced by the script
-    #[serde(rename = "type")]
-    pub type_: ScriptSortType,
-
-    /// Sort order
-    pub order: Option<SortOrder>,
-
-    /// Mode for sorting on array values
-    pub mode: Option<SortMode>,
-
-    /// Behavior when a document is missing the field
-    pub missing: Option<serde_json::Value>,
-
-    /// Whether the sort should contain nested objects
-    pub nested: Option<NestedSortOptions>,
-}
-
-/// Type of script sort values
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ScriptSortType {
-    /// String type
-    String,
-    /// Numeric type
-    Number,
-    /// Version type (for semantic version sorting)
-    Version,
+impl<S> From<(S, SortOptions)> for SortEntry
+where
+    S: Into<String>,
+{
+    fn from(value: (S, SortOptions)) -> Self {
+        Self {
+            field: value.0.into(),
+            options: value.1,
+        }
+    }
 }
 
 /// Sort options for a field
 #[serde_with::skip_serializing_none]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Builder)]
+#[builder(
+    pattern = "mutable",
+    setter(into, strip_option),
+    default,
+    build_fn(error = "crate::Error")
+)]
 pub struct SortOptions {
     /// Sort order
     pub order: Option<SortOrder>,
@@ -400,6 +320,12 @@ pub struct SortOptions {
 
     /// Whether the sort should contain nested objects
     pub nested: Option<NestedSortOptions>,
+}
+
+impl SortOptions {
+    pub fn builder() -> SortOptionsBuilder {
+        SortOptionsBuilder::default()
+    }
 }
 
 /// Options for nested sorting
@@ -642,4 +568,216 @@ pub struct DeletePointInTimeResponse {
 
     /// Number of search contexts that were deleted
     pub num_freed: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(test)]
+    mod search_tests {
+        use crate::types::common::ShardStatistics;
+        use crate::types::search::*;
+        use crate::Error;
+        use serde_json::{json, Value};
+        use std::collections::HashMap;
+
+        /// Helper function to test serialization and deserialization roundtrip
+        fn test_serde_roundtrip<T>(value: &T, expected_json: &str) -> Result<(), Error>
+        where
+            T: serde::Serialize + serde::de::DeserializeOwned + std::fmt::Debug + PartialEq,
+        {
+            // Serialize to string
+            let serialized = serde_json::to_string(&value)?;
+
+            // Parse both as Value for comparison that ignores formatting/whitespace
+            let value_json: Value = serde_json::from_str(&serialized)?;
+            let expected_value: Value = serde_json::from_str(expected_json)?;
+
+            assert_eq!(
+                value_json, expected_value,
+                "Serialized JSON doesn't match expected JSON"
+            );
+
+            // Deserialize back
+            let deserialized: T = serde_json::from_str(&serialized)?;
+
+            // Verify roundtrip
+            assert_eq!(
+                &deserialized, value,
+                "Deserialized value doesn't match original"
+            );
+
+            Ok(())
+        }
+        #[test]
+        fn test_search_response() -> Result<(), Error> {
+            let search_response: SearchResponse = SearchResponse {
+                took: 42,
+                timed_out: false,
+                _shards: ShardStatistics {
+                    total: 5,
+                    successful: 5,
+                    failed: 0,
+                    failures: vec![],
+                },
+                hits: SearchHits {
+                    total: TotalHits {
+                        value: 100,
+                        relation: TotalHitsRelation::Equal,
+                    },
+                    max_score: Some(1.0),
+                    hits: vec![SearchHit {
+                        index: "test-index".to_string(),
+                        id: "1".to_string(),
+                        score: Some(1.0),
+                        source: Some(json!({
+                            "field1": "value1",
+                            "field2": 42
+                        })),
+                        fields: None,
+                        highlight: None,
+                        inner_hits: None,
+                        sort: None,
+                    }],
+                },
+                aggregations: None,
+                suggest: None,
+                profile: None,
+                scroll_id: None,
+            };
+
+            let expected_json = r#"{
+                    "took": 42,
+                    "timed_out": false,
+                    "_shards": {
+                        "total": 5,
+                        "successful": 5,
+                        "failed": 0,
+                        "failures": []
+                    },
+                    "hits": {
+                        "total": {
+                            "value": 100,
+                            "relation": "eq"
+                        },
+                        "max_score": 1.0,
+                        "hits": [
+                            {
+                                "_index": "test-index",
+                                "_id": "1",
+                                "_score": 1.0,
+                                "_source": {
+                                    "field1": "value1",
+                                    "field2": 42
+                                }
+                            }
+                        ]
+                    }
+                }"#;
+
+            test_serde_roundtrip(&search_response, expected_json)
+        }
+
+        #[test]
+        fn test_total_hits() -> Result<(), Error> {
+            let exact_total = TotalHits {
+                value: 42,
+                relation: TotalHitsRelation::Equal,
+            };
+
+            let expected_json = r#"{"value":42,"relation":"eq"}"#;
+            test_serde_roundtrip(&exact_total, expected_json)?;
+
+            let greater_than_total = TotalHits {
+                value: 10000,
+                relation: TotalHitsRelation::GreaterThanOrEqual,
+            };
+
+            let expected_json = r#"{"value":10000,"relation":"gte"}"#;
+            test_serde_roundtrip(&greater_than_total, expected_json)
+        }
+
+        #[test]
+        fn test_highlight_options() -> Result<(), Error> {
+            let mut fields = HashMap::new();
+            fields.insert(
+                "content".to_string(),
+                HighlightField::Config {
+                    type_: Some(HighlighterType::Plain),
+                    fragment_size: Some(150),
+                    number_of_fragments: Some(3),
+                    fragment_offset: None,
+                    matched_fields: None,
+                    pre_tags: None,
+                    post_tags: None,
+                    highlight_query: None,
+                },
+            );
+
+            let highlight_options = HighlightOptions {
+                fields,
+                type_: Some(HighlighterType::Unified),
+                pre_tags: Some(vec!["<em>".to_string()]),
+                post_tags: Some(vec!["</em>".to_string()]),
+                require_field_match: Some(false),
+                fragment_size: Some(100),
+                number_of_fragments: Some(5),
+                order: None,
+                encoder: None,
+            };
+
+            let expected_json = r#"{
+                    "fields": {
+                        "content": {
+                            "type": "plain",
+                            "fragment_size": 150,
+                            "number_of_fragments": 3
+                        }
+                    },
+                    "type": "unified",
+                    "pre_tags": ["<em>"],
+                    "post_tags": ["</em>"],
+                    "require_field_match": false,
+                    "fragment_size": 100,
+                    "number_of_fragments": 5
+                }"#;
+
+            test_serde_roundtrip(&highlight_options, expected_json)
+        }
+
+        #[test]
+        fn test_search_hit() -> Result<(), Error> {
+            let hit: SearchHit = SearchHit {
+                index: "test-index".to_string(),
+                id: "123".to_string(),
+                score: Some(0.8),
+                source: Some(json!({
+                    "title": "Test Document",
+                    "content": "This is a test document"
+                })),
+                fields: None,
+                highlight: Some(HashMap::from([(
+                    "content".to_string(),
+                    vec!["This is a <em>test</em> document".to_string()],
+                )])),
+                inner_hits: None,
+                sort: Some(vec![json!(1)]),
+            };
+
+            let expected_json = r#"{
+                    "_index": "test-index",
+                    "_id": "123",
+                    "_score": 0.8,
+                    "_source": {
+                        "title": "Test Document",
+                        "content": "This is a test document"
+                    },
+                    "highlight": {
+                        "content": ["This is a <em>test</em> document"]
+                    },
+                    "sort": [1]
+                }"#;
+
+            test_serde_roundtrip(&hit, expected_json)
+        }
+    }
 }

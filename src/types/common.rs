@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::Display;
 
 /// HTTP method types used in API operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,6 +78,16 @@ pub enum RefreshPolicy {
     /// Do not refresh
     #[serde(rename = "false")]
     False,
+}
+
+impl Display for RefreshPolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RefreshPolicy::Wait => write!(f, "wait_for"),
+            RefreshPolicy::True => write!(f, "true"),
+            RefreshPolicy::False => write!(f, "false"),
+        }
+    }
 }
 
 /// Version type for document operations
@@ -257,10 +268,7 @@ pub struct GeoPoint {
 
 impl GeoPoint {
     pub fn new(lat: f64, lon: f64) -> Self {
-        Self {
-            lat,
-            lon,
-        }
+        Self { lat, lon }
     }
 }
 
