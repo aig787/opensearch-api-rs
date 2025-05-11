@@ -34,3 +34,5 @@ Thumbs.db
 # Log files
 *.log
 logs/
+
+context/
