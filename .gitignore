@@ -6,7 +6,7 @@
 .cargo/git/db/
 
 # Built target artifacts
-/target/
+**/target/
 
 # Remove Cargo.lock from gitignore if you prefer to commit it
 # Cargo.lock
