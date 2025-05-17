@@ -132,7 +132,6 @@ pub struct FilterAggregation {
 
     /// Sub-aggregations
     #[builder(default)]
-    #[serde(skip)]
     pub aggs: Option<Aggregations>,
 }
 
@@ -165,7 +164,6 @@ pub struct FiltersAggregation {
 
     /// Sub-aggregations
     #[builder(default)]
-    #[serde(skip)]
     pub aggs: Option<Aggregations>,
 }
 

@@ -304,6 +304,10 @@ impl IndexSettings {
     }
 }
 
+pub enum CreateAlias {
+
+}
+
 /// Create index request builder
 #[derive(Debug, Clone, Builder, Serialize)]
 #[builder(pattern = "owned")]

@@ -705,6 +705,11 @@ impl BoolQueryRuleBuilder {
         self.must_not.get_or_insert_default().get_or_insert_default().push(query.into());
         self
     }
+
+    pub fn add_should(&mut self, query: impl Into<Query>) -> &mut Self {
+        self.should.get_or_insert_default().get_or_insert_default().push(query.into());
+        self
+    }
 }
 
 /// Exists query to check if a field exists
@@ -2266,6 +2271,18 @@ pub enum MinimumShouldMatch {
     Absolute(i32),
     /// String value (percentage or combination)
     Complex(String),
+}
+
+impl From<i32> for MinimumShouldMatch {
+    fn from(value: i32) -> Self {
+        Self::Absolute(value)
+    }
+}
+
+impl From<&str> for MinimumShouldMatch {
+    fn from(value: &str) -> Self {
+        Self::Complex(value.into())
+    }
 }
 
 /// Geo bounding box query
