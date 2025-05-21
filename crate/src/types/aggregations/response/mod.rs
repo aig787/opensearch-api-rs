@@ -7,9 +7,10 @@ mod pipeline;
 pub use self::bucket::*;
 pub use self::metric::*;
 pub use self::pipeline::*;
+use enum_as_inner::EnumAsInner;
 
 /// Represents different types of aggregation responses from OpenSearch
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, EnumAsInner)]
 #[serde(untagged)]
 pub enum AggregationResponse {
     // /// Unknown aggregation response type - most general, must be last
@@ -84,7 +85,6 @@ pub enum AggregationResponse {
     NumericString {
         value_string: String,
     },
-
-    // /// Unknown aggregation response type - most general, must be last
-    // Unknown(serde_json::Value),
+    // Unknown aggregation response type - most general, must be last
+    Unknown(serde_json::Value),
 }

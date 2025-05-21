@@ -1212,6 +1212,7 @@ dependencies = [
  "base64 0.22.1",
  "derive_builder",
  "derive_more",
+ "enum-as-inner",
  "log",
  "reqwest",
  "serde",
