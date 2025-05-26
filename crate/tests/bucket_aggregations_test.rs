@@ -539,6 +539,8 @@ async fn test_terms_aggregation() -> Result<()> {
     let aggs = response.aggregations.unwrap();
     let category_terms = aggs.get("category_terms").unwrap();
 
+    println!("{:#?}", category_terms);
+
     if let AggregationResponse::Terms(terms_result) = category_terms {
         // Check buckets
         assert!(!terms_result.buckets.is_empty(), "Should have buckets");
@@ -607,6 +609,8 @@ async fn test_range_aggregation() -> Result<()> {
     // Verify range aggregation results
     let aggs = response.aggregations.unwrap();
     let price_ranges = aggs.get("price_ranges").unwrap();
+
+    println!("{:#?}", price_ranges);
 
     if let AggregationResponse::Range(range_result) = price_ranges {
         // Check buckets

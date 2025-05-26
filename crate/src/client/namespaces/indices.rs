@@ -304,9 +304,7 @@ impl IndexSettings {
     }
 }
 
-pub enum CreateAlias {
-
-}
+pub enum CreateAlias {}
 
 /// Create index request builder
 #[derive(Debug, Clone, Builder, Serialize)]
@@ -518,13 +516,48 @@ pub struct IndexSettingsDetails {
     pub index: IndexSettings,
 }
 
+/// Update index settings struct with all fields optional
+#[derive(Debug, Clone, Builder, Serialize, Deserialize)]
+#[builder(pattern = "mutable")]
+#[serde(rename_all = "snake_case")]
+pub struct UpdateIndexSettings {
+    /// Number of shards
+    #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub number_of_shards: Option<u32>,
+
+    /// Number of replicas
+    #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub number_of_replicas: Option<u32>,
+
+    /// Refresh interval
+    #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_interval: Option<String>,
+
+    /// Custom analysis settings
+    #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub analysis: Option<Value>,
+}
+
+impl UpdateIndexSettings {
+    /// Create a new update index settings builder
+    pub fn builder() -> UpdateIndexSettingsBuilder {
+        UpdateIndexSettingsBuilder::default()
+    }
+}
+
 /// Update index settings request
 #[derive(Debug, Clone, Builder, Serialize)]
 #[builder(pattern = "mutable")]
 pub struct UpdateIndexSettingsRequest {
     /// The index settings to update
     #[serde(rename = "index")]
-    pub settings: HashMap<String, Value>,
+    #[builder(setter(strip_option), default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings: Option<UpdateIndexSettings>,
 
     /// Client reference
     #[builder(private)]

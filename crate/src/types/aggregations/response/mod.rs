@@ -13,8 +13,6 @@ use enum_as_inner::EnumAsInner;
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, EnumAsInner)]
 #[serde(untagged)]
 pub enum AggregationResponse {
-    // /// Unknown aggregation response type - most general, must be last
-    // Unknown(serde_json::Value),
     /// Top Hits aggregation response - has unique fields like _index, _id, _score
     TopHits(TopHitsAggregationResponse),
 
@@ -85,6 +83,4 @@ pub enum AggregationResponse {
     NumericString {
         value_string: String,
     },
-    // Unknown aggregation response type - most general, must be last
-    Unknown(serde_json::Value),
 }

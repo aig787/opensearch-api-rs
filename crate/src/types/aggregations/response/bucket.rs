@@ -115,7 +115,6 @@ pub struct RangeAggregationResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RangeBucket {
     /// From value (inclusive)
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub from: Option<f64>,
 
     /// To value (exclusive)

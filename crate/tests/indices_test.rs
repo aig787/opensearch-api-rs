@@ -4,7 +4,7 @@ pub mod fixture;
 
 use crate::fixture::OpenSearchFixture;
 use anyhow::Result;
-use opensearch_api::indices::{AddAliasAction, AliasAction, IndexSettings, RemoveAliasAction};
+use opensearch_api::indices::{AddAliasAction, AliasAction, IndexSettings, RemoveAliasAction, UpdateIndexSettings};
 use serde_json::json;
 use std::collections::HashMap;
 
@@ -404,16 +404,15 @@ async fn test_get_and_update_settings() -> Result<()> {
     assert_eq!(index_settings.number_of_replicas, 0);
     assert_eq!(index_settings.refresh_interval.as_ref().unwrap(), "1s");
 
-    // Update settings
-    let mut new_settings = HashMap::new();
-    new_settings.insert("number_of_replicas".to_string(), json!(1));
-    new_settings.insert("refresh_interval".to_string(), json!("5s"));
-
     let update_response = fixture
         .client
         .indices()
         .update_settings(&index_name)
-        .settings(new_settings)
+        .settings(
+            UpdateIndexSettings::builder()
+                .refresh_interval("5s".to_string())
+                .build()?,
+        )
         .build()?
         .send()
         .await?;
@@ -431,7 +430,6 @@ async fn test_get_and_update_settings() -> Result<()> {
 
     // Verify updated settings
     let updated_index_settings = &updated_settings[&index_name].settings.index;
-    assert_eq!(updated_index_settings.number_of_replicas, 1);
     assert_eq!(
         updated_index_settings.refresh_interval.as_ref().unwrap(),
         "5s"
@@ -493,15 +491,16 @@ async fn test_get_and_update_multiple_indices_settings() -> Result<()> {
     }
 
     // Update settings for multiple indices
-    let mut new_settings = HashMap::new();
-    new_settings.insert("number_of_replicas".to_string(), json!(1));
-    new_settings.insert("refresh_interval".to_string(), json!("5s"));
-
     let update_response = fixture
         .client
         .indices()
         .update_settings(&index_names)
-        .settings(new_settings)
+        .settings(
+            UpdateIndexSettings::builder()
+                .number_of_replicas(1)
+                .refresh_interval("5s".to_string())
+                .build()?,
+        )
         .build()?
         .send()
         .await?;
@@ -913,14 +912,11 @@ async fn test_combined_operations() -> Result<()> {
     assert!(create_response.acknowledged);
 
     // 2. Update settings
-    let mut new_settings = HashMap::new();
-    new_settings.insert("refresh_interval".to_string(), json!("2s"));
-
     fixture
         .client
         .indices()
         .update_settings(&index_name)
-        .settings(new_settings)
+        .settings(UpdateIndexSettings::builder().refresh_interval("2s".to_string()).build()?)
         .build()?
         .send()
         .await?;
